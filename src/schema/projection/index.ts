@@ -265,6 +265,9 @@ export function computeProjection(schema: Schema, query: ExplorationQuery): Proj
   // "close to what you're looking at" with "close to where you've been".
   const structural = proximityFrom(schema, new Map([[query.focusId, 1]]), profile, depth)
   const trailReach = proximityFrom(schema, trailPriors(query.trail), profile, depth)
+  // Authored journeys only. Derived flows contain every operation and
+  // its own outcomes, so feeding them in would give every operation an
+  // identical behavioural score and destroy the term's discrimination.
   const behavioural = behaviouralImportance(schema.journeys)
   const trailSet = new Set(query.trail)
 

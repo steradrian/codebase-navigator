@@ -35,7 +35,7 @@ import type {
 } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
 import { extractOutcomes } from './outcomes'
-import { withDerivedJourneys } from '../../schema/journey/derive'
+import { withDerivedFlows } from '../../schema/journey/derive'
 import {
   buildEntityCatalog,
   resolveOperationEntity,
@@ -317,7 +317,7 @@ export function parseOpenAPI(spec: unknown): ParseResult {
   // reinforce each other. Pure and idempotent.
   // Journeys are derived after outcomes exist, since a journey is only
   // emitted where an operation's declared responses actually fork.
-  const propagated = withDerivedJourneys(assignAltitudes(propagateEntities(result)))
+  const propagated = withDerivedFlows(assignAltitudes(propagateEntities(result)))
 
   return { ok: errors.length === 0, schema: propagated, errors, warnings }
 }

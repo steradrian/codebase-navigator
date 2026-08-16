@@ -59,17 +59,19 @@ const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.strin
  * mutated.
  */
 /**
- * Authored journeys from `existing`, plus derived journeys from
- * `candidate`. An authored journey wins any id collision.
+ * Authored journeys always survive a re-import untouched.
+ *
+ * Derived flows are a separate collection and follow the opposite rule:
+ * the importer owns them, so the candidate's flows replace the existing
+ * ones outright.
  */
 function mergeJourneys(existing: Schema, candidate: Schema): Schema['journeys'] {
   const authored = (existing.journeys ?? []).filter((j) => !j.origin || j.origin === 'manual')
-  const authoredIds = new Set(authored.map((j) => j.id))
-  const derived = (candidate.journeys ?? []).filter(
-    (j) => j.origin && j.origin !== 'manual' && !authoredIds.has(j.id),
-  )
-  const merged = [...authored, ...derived]
-  return merged.length > 0 ? merged : existing.journeys
+  return authored.length > 0 ? authored : existing.journeys
+}
+
+function mergeFlows(existing: Schema, candidate: Schema): Schema['flows'] {
+  return candidate.flows ?? existing.flows
 }
 
 export function merge(existing: Schema, candidate: Schema): MergeResult {
@@ -303,14 +305,11 @@ export function merge(existing: Schema, candidate: Schema): MergeResult {
     nodes: sortById(mergedNodes),
     links: sortById(finalLinks),
     paths: existing.paths,
-    // v1.3 — journeys follow the same origin rule as nodes and links.
-    // Authored journeys are sacred and always survive. Derived ones are
-    // owned by the importer that produced them, so a re-import refreshes
-    // them rather than accumulating duplicates. Taking `existing`
-    // wholesale would strand derived journeys at their first version;
-    // taking `candidate` wholesale would delete everything a person
-    // wrote.
+    // v1.3 — authored journeys are sacred and always survive a
+    // re-import. Derived flows are a separate collection owned by the
+    // importer, so the candidate's replace the existing ones.
     journeys: mergeJourneys(existing, candidate),
+    flows: mergeFlows(existing, candidate),
     annotations: existing.annotations,
   }
 

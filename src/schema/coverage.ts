@@ -115,8 +115,15 @@ function measure(
 ): DomainCoverage['dimensions'] {
   // Behaviour is only meaningful for things that DO something.
   const behavioural = subjects.filter((n) => n.altitude === 'behavior')
-  const withOutcomes = new Set(
-    scope.filter((n) => n.type === 'outcome').map((n) => n.id.split(':outcome:')[0]),
+
+  // Counted on FAILURE outcomes, not on any outcome at all. Every
+  // operation declares a success response, so "has an outcome" scored a
+  // vacuous 100% while saying nothing about whether anyone documented
+  // what can go wrong — which is the part a reader actually needs.
+  const withFailureOutcomes = new Set(
+    scope
+      .filter((n) => n.type === 'outcome' && n.metadata?.outcomeKind !== 'success')
+      .map((n) => n.id.split(':outcome:')[0]),
   )
 
   const dated = subjects.filter((n) => lastAttestedAt(n) !== null)
@@ -130,12 +137,12 @@ function measure(
     // Is this node classified into the product's vocabulary at all?
     entities: score(subjects.filter((n) => Boolean(n.entity)).length, subjects.length),
 
-    // Does any journey walk through it?
+    // Does any AUTHORED journey walk through it?
     journeys: score(subjects.filter((n) => journeyNodeIds.has(n.id)).length, subjects.length),
 
     // Do the things that act declare what can happen when they do?
     behavior: score(
-      behavioural.filter((n) => withOutcomes.has(n.id)).length,
+      behavioural.filter((n) => withFailureOutcomes.has(n.id)).length,
       behavioural.length,
     ),
 
@@ -176,6 +183,12 @@ const overallOf = (dimensions: DomainCoverage['dimensions']): number | null => {
  * would let a well-documented endpoint inflate its own score.
  */
 export function computeCoverage(schema: Schema, opts: { now?: string } = {}): CoverageReport {
+  // AUTHORED journeys only. Derived flows live in `schema.flows` and are
+  // deliberately excluded: a flow's steps are the operation node and the
+  // outcome nodes generated alongside it, so counting them would make
+  // this metric measure its own output. "Journey coverage" has to mean
+  // "a person has mapped what someone is trying to do here", or it is
+  // measuring whether an API author wrote down two status codes.
   const journeyNodeIds = new Set<string>()
   for (const j of schema.journeys ?? []) {
     for (const step of j.steps) if (step.nodeId) journeyNodeIds.add(step.nodeId)

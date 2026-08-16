@@ -229,8 +229,26 @@ export type EvidenceSource =
   | 'human'
   | 'ai_inference'
 
+/**
+ * How much weight an attribution can actually bear.
+ *
+ * `self_reported` means someone typed a name into a box. Without
+ * authentication that is a claim about who verified something, not proof
+ * of it — and `human` is the highest-trust source in the system, so
+ * treating the two alike would let an unaccountable textbox outrank
+ * static analysis and tests.
+ */
+export type EvidenceAttribution = 'self_reported' | 'authenticated'
+
 export type Evidence = {
   source: EvidenceSource
+
+  /**
+   * v1.3 — only meaningful for `human` evidence. Absent is read as
+   * `self_reported`, which is the safe default: nothing in the system
+   * authenticates anyone yet.
+   */
+  attribution?: EvidenceAttribution
 
   /**
    * 0..1. Absent means "unscored", which is NOT the same as 0 —
@@ -462,12 +480,29 @@ export type Schema = {
   paths: GuidedPath[]
 
   /**
-   * Branching journeys (v1.3). Optional rather than required so the
-   * ~15 existing Schema literals in tests and importers stay valid;
-   * `upgradeLoadedSchema` normalises it to a populated array at the
-   * load boundary, so runtime consumers can rely on it being present.
+   * Human-authored user journeys — someone's goal, with the branches
+   * that goal can take. AUTHORED ONLY. Nothing derived ever lands here.
+   *
+   * Optional rather than required so the ~15 existing Schema literals
+   * in tests and importers stay valid; `upgradeLoadedSchema` normalises
+   * it at the load boundary.
    */
   journeys?: Journey[]
+
+  /**
+   * Derived operation flows: one branching state machine per API
+   * operation, built from the responses its specification declares.
+   *
+   * Kept in a SEPARATE collection rather than mixed into `journeys`,
+   * and that separation is structural on purpose. A `status: 'inferred'`
+   * field would have to be re-checked by every consumer forever, and
+   * the first list view that maps over the array and renders `name`
+   * would put "GET /payments" beside "Invite a teammate" with equal
+   * weight. A flow is not a claim about what anyone was trying to do —
+   * it is a redrawing of a spec's response map — and the type system
+   * should say so rather than relying on discipline.
+   */
+  flows?: Journey[]
 
   annotations: Annotation[]
 }

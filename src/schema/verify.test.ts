@@ -185,3 +185,44 @@ describe('summariseEvidence — conflict', () => {
     })
   })
 })
+
+describe('verification attribution', () => {
+  it('marks a confirmation self-reported by default', () => {
+    // Nothing authenticates anyone yet, so an unqualified confirmation
+    // is a claim that someone checked, not proof of it.
+    const s = verifyNode(mkSchema([mkNode('a')]), 'a', { author: 'Ada', at: AT })
+    expect(s.nodes[0].evidence![0].attribution).toBe('self_reported')
+  })
+
+  it('ranks a self-reported confirmation below a machine-checked fact', () => {
+    // `human` is the highest-trust source in the system. An
+    // unauthenticated textbox must not outrank static analysis.
+    const s = summariseEvidence([
+      { source: 'human', confidence: 1 },
+      { source: 'static_analysis', confidence: 1 },
+    ])
+    expect(s.strongestSource).toBe('static_analysis')
+  })
+
+  it('lets an authenticated confirmation outrank everything', () => {
+    const s = summariseEvidence([
+      { source: 'human', confidence: 1, attribution: 'authenticated' },
+      { source: 'static_analysis', confidence: 1 },
+    ])
+    expect(s.strongestSource).toBe('human')
+  })
+
+  it('still ranks a self-reported confirmation above an AI guess', () => {
+    // A person did look, which is worth more than a model's inference.
+    const s = summariseEvidence([
+      { source: 'human', confidence: 1 },
+      { source: 'ai_inference', confidence: 1 },
+    ])
+    expect(s.strongestSource).toBe('human')
+  })
+
+  it('still reports humanVerified so the UI can label it honestly', () => {
+    const s = summariseEvidence([{ source: 'human', confidence: 1 }])
+    expect(s.humanVerified).toBe(true)
+  })
+})

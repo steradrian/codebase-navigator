@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────
-// Journey derivation.
+// Operation-flow derivation.
 //
 // Journey coverage sat at 0% across every domain because nothing
 // produced journeys: they existed only as hand-authored linear paths
@@ -15,13 +15,14 @@
 //
 //   * These are `inferred`, never `verified`. Declared responses say what
 //     CAN happen, not that anyone confirmed the product behaves this way.
-//   * They are not user journeys. "POST /api/payment_processing" is a
-//     system flow; a user's goal is "deposit money", which spans several
-//     operations and screens and cannot be recovered from a spec. The
-//     category is `data_flow`, and nothing here claims user intent.
-//   * A derived journey carries its importer's origin, so the merge
-//     engine can refresh it on re-import without touching anything a
-//     person wrote.
+//   * They are NOT user journeys, and they are not stored as such.
+//     "POST /api/payment_processing" is a system flow; a user's goal is
+//     "deposit money", which spans several operations and screens and
+//     cannot be recovered from a spec. They live in `schema.flows`,
+//     never `schema.journeys`, so nothing downstream has to remember
+//     the difference.
+//   * A flow carries its importer's origin, so a re-import can refresh
+//     it without touching anything a person wrote.
 //
 // Pure and deterministic.
 // ─────────────────────────────────────────────────────────────────
@@ -31,20 +32,19 @@ import type { Journey, JourneyStep, JourneyTransition, Node, Schema } from '@/ty
 /** Link type an importer uses to attach an outcome to its operation. */
 const OUTCOME_LINK_TYPE = 'outcome'
 
-export const derivedJourneyId = (operationNodeId: string): string =>
-  `derived:journey:${operationNodeId}`
+export const flowId = (operationNodeId: string): string =>
+  `derived:flow:${operationNodeId}`
 
 const CALL_STEP = 'call'
 
 /**
- * Journeys implied by operations that declare more than one outcome.
+ * Flows implied by operations that declare more than one outcome.
  *
  * An operation with a single declared response has no branch, and a
  * one-way "it succeeds" flow tells a reader nothing they did not already
- * know — so it is not emitted. Journeys exist here to show where
- * behaviour forks.
+ * know — so it is not emitted. Flows exist to show where behaviour forks.
  */
-export function deriveJourneys(schema: Schema): Journey[] {
+export function deriveFlows(schema: Schema): Journey[] {
   const byId = new Map(schema.nodes.map((n) => [n.id, n]))
 
   // operation id → its outcome nodes
@@ -58,7 +58,7 @@ export function deriveJourneys(schema: Schema): Journey[] {
     outcomesByOperation.set(link.source, list)
   }
 
-  const journeys: Journey[] = []
+  const flows: Journey[] = []
 
   for (const operationId of [...outcomesByOperation.keys()].sort()) {
     const operation = byId.get(operationId)
@@ -104,8 +104,8 @@ export function deriveJourneys(schema: Schema): Journey[] {
       evidence: outcome.evidence,
     }))
 
-    journeys.push({
-      id: derivedJourneyId(operationId),
+    flows.push({
+      id: flowId(operationId),
       name: operation.name,
       description: operation.description,
       color: '#8b7cff',
@@ -121,25 +121,17 @@ export function deriveJourneys(schema: Schema): Journey[] {
     })
   }
 
-  return journeys
+  return flows
 }
 
 /**
- * Merge derived journeys into a schema without disturbing authored ones.
+ * Attach derived flows to a schema.
  *
- * Authored journeys always win on id collision. Derived journeys from a
- * previous run are replaced wholesale, which is what makes re-import
- * refresh them rather than accumulate duplicates.
+ * `journeys` is not touched. An authored journey and a derived flow are
+ * different kinds of claim and never compete for the same slot. Previous
+ * flows are replaced wholesale, so a re-import refreshes them rather
+ * than accumulating duplicates.
  */
-export function withDerivedJourneys(schema: Schema): Schema {
-  const derived = deriveJourneys(schema)
-  const authored = (schema.journeys ?? []).filter(
-    (j) => !j.origin || j.origin === 'manual',
-  )
-  const authoredIds = new Set(authored.map((j) => j.id))
-
-  return {
-    ...schema,
-    journeys: [...authored, ...derived.filter((j) => !authoredIds.has(j.id))],
-  }
+export function withDerivedFlows(schema: Schema): Schema {
+  return { ...schema, flows: deriveFlows(schema) }
 }

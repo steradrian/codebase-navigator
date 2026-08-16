@@ -59,9 +59,18 @@ describe('assessIndexing', () => {
     expect(stageOf(s, 'classification').status).toBe('complete')
   })
 
-  it('reports journey inference from derived journeys', () => {
+  it('reports flow derivation from derived flows', () => {
+    const f: Journey = { id: 'f', name: 'F', description: '', color: '#fff', steps: [], transitions: [] }
+    const s: Schema = { ...mkSchema([node('a', 'api')]), flows: [f] }
+    expect(stageOf(s, 'journeys').produced).toBe(1)
+  })
+
+  it('does not count authored journeys as an indexing stage', () => {
+    // Authoring is a human activity, not something the pipeline runs.
+    // Counting it here would make the index look incomplete simply
+    // because nobody had written a journey yet.
     const j: Journey = { id: 'j', name: 'J', description: '', color: '#fff', steps: [], transitions: [] }
-    expect(stageOf(mkSchema([node('a', 'api')], [j]), 'journeys').produced).toBe(1)
+    expect(stageOf(mkSchema([node('a', 'api')], [j]), 'journeys').produced).toBe(0)
   })
 
   it('rolls up to partial when any runnable stage is partial', () => {

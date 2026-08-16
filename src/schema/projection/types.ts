@@ -350,6 +350,8 @@ export const DEFAULT_DEPTH: Readonly<Record<Altitude, number>> = {
  * self-reported certainty is not a substitute for provenance.
  */
 export const SOURCE_TRUST: Readonly<Record<EvidenceSource, number>> = {
+  // Only an authenticated confirmation earns this. See
+  // `trustForEvidence`, which demotes a self-reported one.
   human: 1.0,
   test: 0.95,
   static_analysis: 0.9,
@@ -367,6 +369,30 @@ export const SOURCE_TRUST: Readonly<Record<EvidenceSource, number>> = {
  * a single low-confidence AI guess.
  */
 export const UNEVIDENCED_TRUST = 0.5
+
+/**
+ * Trust in a self-reported human confirmation.
+ *
+ * Deliberately below `test` and `static_analysis`: a machine-checked
+ * fact is better evidence than an unauthenticated assertion that
+ * someone checked. Still above `ai_inference`, because a person did
+ * look. Once identity exists, an authenticated confirmation takes the
+ * full `human` weight.
+ */
+export const SELF_REPORTED_HUMAN_TRUST = 0.6
+
+/**
+ * Trust for one piece of evidence, accounting for attribution.
+ *
+ * Use this rather than indexing SOURCE_TRUST directly — the raw table
+ * cannot tell an authenticated confirmation from a typed-in name.
+ */
+export const trustForEvidence = (evidence: Evidence): number => {
+  if (evidence.source !== 'human') return SOURCE_TRUST[evidence.source] ?? UNEVIDENCED_TRUST
+  return evidence.attribution === 'authenticated'
+    ? SOURCE_TRUST.human
+    : SELF_REPORTED_HUMAN_TRUST
+}
 
 export const summariseEvidence = (evidence: Evidence[] | undefined): EvidenceSummary => {
   if (!evidence || evidence.length === 0) {
@@ -389,7 +415,7 @@ export const summariseEvidence = (evidence: Evidence[] | undefined): EvidenceSum
   let humanVerified = false
 
   for (const e of evidence) {
-    const trust = SOURCE_TRUST[e.source] ?? UNEVIDENCED_TRUST
+    const trust = trustForEvidence(e)
     if (trust > strongestTrust) {
       strongestTrust = trust
       strongest = e.source

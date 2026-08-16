@@ -62,14 +62,26 @@ describe('computeCoverage — dimensions', () => {
     })
   })
 
-  it('measures behaviour as operations that declare their outcomes', () => {
+  it('measures behaviour as operations that declare a FAILURE outcome', () => {
     const s = mkSchema([
       mkNode('op1', 'api', { domain: 'pay' }),
-      mkNode('op1:outcome:401', 'outcome', { domain: 'pay' }),
+      mkNode('op1:outcome:401', 'outcome', { domain: 'pay', metadata: { outcomeKind: 'permission_denied' } }),
       mkNode('op2', 'api', { domain: 'pay' }),
     ])
     const pay = computeCoverage(s).domains.find((d) => d.domain === 'pay')!
     expect(pay.dimensions.behavior).toMatchObject({ value: 0.5, covered: 1, total: 2 })
+  })
+
+  it('does not credit an operation that only declares success', () => {
+    // Every operation declares a success response, so counting any
+    // outcome scored a vacuous 100% while saying nothing about whether
+    // anyone documented what can go wrong.
+    const s = mkSchema([
+      mkNode('op1', 'api', { domain: 'pay' }),
+      mkNode('op1:outcome:200', 'outcome', { domain: 'pay', metadata: { outcomeKind: 'success' } }),
+    ])
+    const pay = computeCoverage(s).domains.find((d) => d.domain === 'pay')!
+    expect(pay.dimensions.behavior.value).toBe(0)
   })
 
   it('does not let outcome nodes pad the population being measured', () => {
@@ -167,5 +179,34 @@ describe('computeCoverage — shape', () => {
     const s = mkSchema([mkNode('a', 'api', { domain: 'pay', entity: 'payment' })])
     expect(JSON.stringify(computeCoverage(s, { now: NOW })))
       .toBe(JSON.stringify(computeCoverage(s, { now: NOW })))
+  })
+})
+
+describe('computeCoverage — journeys must not count their own output', () => {
+  const flowLike = (opId: string): Journey => ({
+    id: `derived:flow:${opId}`, name: opId, description: '', color: '#fff',
+    origin: 'auto:openapi', status: 'inferred',
+    steps: [{ id: 'call', name: 'c', annotation: '', kind: 'action', nodeId: opId }],
+    transitions: [],
+  })
+
+  it('ignores derived flows entirely', () => {
+    // A flow's steps are the operation node and the outcomes generated
+    // alongside it, so counting them would make this metric measure its
+    // own output rather than anyone's understanding.
+    const s = mkSchema([mkNode('op1', 'api')])
+    const withFlows: Schema = { ...s, flows: [flowLike('op1')] }
+    expect(computeCoverage(withFlows).product.dimensions.journeys.value).toBe(0)
+  })
+
+  it('counts an authored journey walking the same node', () => {
+    const authored: Journey = {
+      id: 'authored', name: 'Deposit money', description: '', color: '#fff',
+      origin: 'manual',
+      steps: [{ id: 's', name: 'S', annotation: '', kind: 'action', nodeId: 'op1' }],
+      transitions: [],
+    }
+    const s = mkSchema([mkNode('op1', 'api')], [authored])
+    expect(computeCoverage(s).product.dimensions.journeys.value).toBe(1)
   })
 })

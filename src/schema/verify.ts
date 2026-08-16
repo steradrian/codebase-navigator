@@ -15,11 +15,16 @@
 // than read from the clock.
 // ─────────────────────────────────────────────────────────────────
 
-import type { Evidence, Node, Schema } from '@/types'
+import type { Evidence, EvidenceAttribution, Node, Schema } from '@/types'
 
 export type VerificationInput = {
   /** Who is confirming. Recorded so a claim can be traced to a person. */
   author: string
+  /**
+   * Defaults to `self_reported`. Only an authenticated caller may pass
+   * `authenticated`, and nothing authenticates callers yet.
+   */
+  attribution?: EvidenceAttribution
   /** ISO 8601. Passed in so verification stays reproducible in tests. */
   at: string
   /** Optional free-text justification. */
@@ -40,7 +45,12 @@ export const isHumanVerified = (node: Node): boolean =>
 export function verifyNode(schema: Schema, nodeId: string, input: VerificationInput): Schema {
   const entry: Evidence = {
     source: 'human',
-    // A person's direct confirmation is the strongest signal available.
+    // Self-reported until an identity system exists. Nothing
+    // authenticates anyone today, so this is a claim that someone
+    // checked, not proof of it — and `human` is the highest-trust source
+    // in the system. Marking it keeps an unaccountable textbox from
+    // outranking static analysis and tests. See `trustForEvidence`.
+    attribution: input.attribution ?? 'self_reported',
     confidence: 1,
     note: input.note ? `${input.author}: ${input.note}` : `Verified by ${input.author}`,
     verifiedAt: input.at,

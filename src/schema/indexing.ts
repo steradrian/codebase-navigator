@@ -74,7 +74,7 @@ const STAGE_LABELS: Readonly<Record<IndexingStageId, string>> = {
   tests: 'Test mapping',
   documentation: 'Documentation analysis',
   git: 'Git analysis',
-  journeys: 'Journey inference',
+  journeys: 'Operation-flow derivation',
   classification: 'Domain classification',
   runtime: 'Runtime evidence',
 }
@@ -136,7 +136,10 @@ export function assessIndexing(schema: Schema): IndexingReport {
     stage('tests', testCount),
     stage('documentation', docCount),
     stage('git', gitCount),
-    stage('journeys', (schema.journeys ?? []).length),
+    // Counts derived flows. Authored journeys are a human activity, not
+    // an indexing stage, and reporting them here would make the pipeline
+    // look incomplete because nobody had written one yet.
+    stage('journeys', (schema.flows ?? []).length),
     stage(
       'classification',
       nodes.filter((n) => n.domain).length,
