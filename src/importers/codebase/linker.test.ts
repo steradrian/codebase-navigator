@@ -537,3 +537,59 @@ describe('extractCodebaseApiLinks — multi-hop indirection', () => {
     expect(r.links.length).toBeGreaterThan(0)
   })
 })
+
+describe('extractCodebaseApiLinks — JSX usage counts as a call', () => {
+  const ops = [{ method: 'GET', path: '/api/player' }]
+  const build = (consumer: string) =>
+    new Map<string, string>([
+      ['src/components/Consumer.tsx', consumer],
+      ['src/api/fetch-functions.ts', `
+        import { client } from './client'
+        export const PlayerCard = () => client.GET('/api/player')
+      `],
+    ])
+  const sources = (files: Map<string, string>) => {
+    const r = extractCodebaseApiLinks(files, makeSchemaFor(files, ops))
+    return r.links.map((l) => l.source)
+  }
+
+  it('links a component rendered as JSX', () => {
+    const files = build(`
+      import { PlayerCard } from '../api/fetch-functions'
+      export function Consumer() { return <PlayerCard /> }
+    `)
+    expect(sources(files)).toContain('codebase:file:src/components/Consumer.tsx')
+  })
+
+  it('links a JSX element carrying props', () => {
+    const files = build(`
+      import { PlayerCard } from '../api/fetch-functions'
+      export function Consumer() { return <PlayerCard id={1} /> }
+    `)
+    expect(sources(files)).toContain('codebase:file:src/components/Consumer.tsx')
+  })
+
+  it('still links a plain function call', () => {
+    const files = build(`
+      import { PlayerCard } from '../api/fetch-functions'
+      export function Consumer() { return PlayerCard() }
+    `)
+    expect(sources(files)).toContain('codebase:file:src/components/Consumer.tsx')
+  })
+
+  it('does not link a bare mention with no usage', () => {
+    const files = build(`
+      import { PlayerCard } from '../api/fetch-functions'
+      export const label = 'PlayerCard is unused here'
+    `)
+    expect(sources(files)).not.toContain('codebase:file:src/components/Consumer.tsx')
+  })
+
+  it('does not match a longer name that merely starts the same', () => {
+    const files = build(`
+      import { PlayerCard } from '../api/fetch-functions'
+      export function Consumer() { return <PlayerCardExtended /> }
+    `)
+    expect(sources(files)).not.toContain('codebase:file:src/components/Consumer.tsx')
+  })
+})

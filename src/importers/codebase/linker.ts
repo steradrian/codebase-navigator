@@ -190,10 +190,20 @@ function extractNamedImports(source: string): Array<{ name: string; from: string
 
 /** Is `name` called (as a function, JSX tag, etc.) anywhere in source? */
 function isCalled(source: string, name: string): boolean {
-  // Word boundary + open paren OR JSX open. Restrictive enough to
-  // avoid false positives from string constants containing the name.
-  const pattern = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\s*\\(`)
-  return pattern.test(source)
+  // Two usage forms, both of which are real invocations:
+  //   fn(...)      — a plain call
+  //   <Comp ... >  — JSX, which is a call in every way that matters here
+  //
+  // The JSX arm was described in this function's original comment but
+  // never implemented, so an imported component rendered as JSX counted
+  // as "imported but unused" and its endpoint indirection was dropped.
+  // That silently excluded most of a TSX codebase from pass 3.
+  //
+  // Still deliberately restrictive: a bare mention inside a string or a
+  // type position is not a use, and treating it as one would invent
+  // relationships the code does not have.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`\\b${escaped}\\s*\\(|<${escaped}[\\s/>]`).test(source)
 }
 
 // ─── public entry ────────────────────────────────────────────
