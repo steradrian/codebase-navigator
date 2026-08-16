@@ -201,13 +201,13 @@ export const LENS_PROFILES: Readonly<Record<Lens, LensProfile>> = {
     direction: 'both',
   },
   behavior: {
-    allowedLinkTypes: ['triggers', 'data_flow'],
+    allowedLinkTypes: ['triggers', 'data_flow', 'outcome'],
     weights: { structural: 0.35, trail: 0.1, evidence: 0.15, recency: 0.05, behavioral: 0.35 },
     hubDampening: 0.4,
     direction: 'downstream',
   },
   journey: {
-    allowedLinkTypes: ['triggers', 'data_flow'],
+    allowedLinkTypes: ['triggers', 'data_flow', 'outcome'],
     weights: { structural: 0.2, trail: 0.1, evidence: 0.1, recency: 0.05, behavioral: 0.55 },
     hubDampening: 0.3,
     direction: 'both',

@@ -34,6 +34,7 @@ import type {
   Schema,
 } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
+import { extractOutcomes } from './outcomes'
 import {
   buildEntityCatalog,
   resolveOperationEntity,
@@ -70,12 +71,14 @@ const DEFAULT_NODE_TYPES: Record<string, { color: string; label: string; glow?: 
   util: { color: '#90a4ae', label: 'Util', glow: 0.06 },
   ui: { color: '#ffd740', label: 'UI', glow: 0.1 },
   external: { color: '#78909c', label: 'External', glow: 0.06 },
+  outcome: { color: '#b0bec5', label: 'Outcome', glow: 0.08 },
 }
 
 const DEFAULT_LINK_TYPES: Record<string, LinkType> = {
   data_flow: { color: '#1a4a6c', label: 'Data Flow', animated: true },
   dependency: { color: '#3a2a5c', label: 'Dependency', dashed: true },
   triggers: { color: '#4a3a1c', label: 'Triggers', animated: true },
+  outcome: { color: '#4a2d33', label: 'Outcome', dashed: true },
 }
 
 // ─── helpers ─────────────────────────────────────────────────
@@ -273,6 +276,18 @@ export function parseOpenAPI(spec: unknown): ParseResult {
       // Request body → data_flow (api → schema)
       collectBodyLinks(op, id, nodeIdForSchema, 'request').forEach(addLink)
       collectBodyLinks(op, id, nodeIdForSchema, 'response').forEach(addLink)
+
+      // Every declared response becomes an addressable outcome. Entity
+      // resolution above reads only 2xx because all it needs is the
+      // success payload's shape; the 4xx and 5xx the author declared
+      // are the raw material of the Behavior lens.
+      const outcomes = extractOutcomes(op, id, name, {
+        entity: resolution.entity,
+        domain: resolution.domain,
+        group: tag,
+      })
+      outcomes.nodes.forEach(addNode)
+      outcomes.links.forEach(addLink)
     }
   }
 

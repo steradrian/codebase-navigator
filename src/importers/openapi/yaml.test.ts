@@ -46,10 +46,11 @@ components:
     expect(result.schema).not.toBeNull()
 
     const nodeNames = result.schema!.nodes.map((n) => n.name).sort()
-    // Customer (used at top level in /customers response) + GET /customers.
-    // Tag is only referenced from Customer.tags so GE-115 classifies it
-    // as a value object and filters it out.
-    expect(nodeNames).toEqual(['Customer', 'GET /customers'])
+    // Customer (used at top level in /customers response) + GET /customers,
+    // plus one outcome node per declared response. Tag is only referenced
+    // from Customer.tags so GE-115 classifies it as a value object and
+    // filters it out.
+    expect(nodeNames).toEqual(['200 Success', 'Customer', 'GET /customers'])
 
     // Validator-clean
     expect(validate(result.schema!).ok).toBe(true)

@@ -35,6 +35,8 @@ export type OpenAPIRequestBody = {
 }
 
 export type OpenAPIResponse = {
+  /** The API author's own wording for this response. */
+  description?: string
   content?: Record<string, OpenAPIMediaType>
 }
 

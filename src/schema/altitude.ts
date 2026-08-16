@@ -56,6 +56,9 @@ const ALTITUDE_BY_NODE_TYPE: Readonly<Record<string, Altitude>> = {
 
   // OpenAPI + backend importers
   api: 'behavior',
+  // An outcome is something the product does, sitting alongside the
+  // operation that produces it rather than beneath it.
+  outcome: 'behavior',
   database: 'system',
   service: 'system',
   external: 'system',

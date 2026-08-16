@@ -1,0 +1,539 @@
+<title>UI Readiness Register</title>
+<style>
+  /* Dark-first: :root carries the full dark palette. */
+  :root {
+    --ground: #0B0E14;
+    --surface: #141824;
+    --raised: #1B2130;
+    --line: #252B38;
+    --line-strong: #343C4D;
+
+    --ink: #EEF1F7;
+    --ink-2: #AAB2C0;
+    --ink-3: #767F91;
+
+    --accent: #8B7CFF;
+    --accent-soft: #211D3E;
+
+    --ready: #55D6A7;
+    --partial: #F3B85B;
+    --absent: #F06A72;
+    --ready-bg: #12281F;
+    --partial-bg: #2A2114;
+    --absent-bg: #2C1619;
+
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+    --measure: 68ch;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ground: #FBFBFD;
+      --surface: #FFFFFF;
+      --raised: #F4F5F9;
+      --line: #E2E5EE;
+      --line-strong: #C9CEDC;
+
+      --ink: #171A22;
+      --ink-2: #4C5464;
+      --ink-3: #6E7688;
+
+      --accent: #5B48D9;
+      --accent-soft: #EEEBFF;
+
+      --ready: #197B57;
+      --partial: #8A5D08;
+      --absent: #B3323C;
+      --ready-bg: #E6F7F0;
+      --partial-bg: #FDF3E0;
+      --absent-bg: #FDECEE;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --ground: #FBFBFD;
+    --surface: #FFFFFF;
+    --raised: #F4F5F9;
+    --line: #E2E5EE;
+    --line-strong: #C9CEDC;
+
+    --ink: #171A22;
+    --ink-2: #4C5464;
+    --ink-3: #6E7688;
+
+    --accent: #5B48D9;
+    --accent-soft: #EEEBFF;
+
+    --ready: #197B57;
+    --partial: #8A5D08;
+    --absent: #B3323C;
+    --ready-bg: #E6F7F0;
+    --partial-bg: #FDF3E0;
+    --absent-bg: #FDECEE;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.1rem, 4vw, 2.5rem) 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  /* ── masthead ── */
+  .masthead { display: flex; flex-direction: column; gap: 1rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    align-items: center;
+  }
+  .eyebrow .dot { color: var(--line-strong); }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(1.9rem, 4.4vw, 2.7rem);
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    font-weight: 620;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    margin: 0;
+    max-width: var(--measure);
+    font-size: clamp(1rem, 2vw, 1.12rem);
+    color: var(--ink-2);
+  }
+
+  /* ── verdict ── */
+  .verdict {
+    border-left: 2px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 1.15rem 1.4rem;
+    border-radius: 0 10px 10px 0;
+  }
+  .verdict p { margin: 0; max-width: var(--measure); }
+  .verdict strong { color: var(--ink); font-weight: 620; }
+
+  /* ── lens strip ── */
+  .lensgrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(102px, 1fr));
+    gap: 0.5rem;
+  }
+  .lens {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-top: 2px solid var(--tone, var(--line-strong));
+    border-radius: 8px;
+    padding: 0.7rem 0.75rem 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.28rem;
+  }
+  .lens .name { font-size: 13.5px; font-weight: 580; }
+  .lens .state {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--tone);
+  }
+  .lens.is-ready   { --tone: var(--ready); }
+  .lens.is-partial { --tone: var(--partial); }
+  .lens.is-absent  { --tone: var(--absent); }
+
+  /* ── figures ── */
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+  .figure {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .figure .n {
+    font-family: var(--mono);
+    font-size: 1.65rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+  }
+  .figure .k { font-size: 13px; color: var(--ink-2); }
+
+  /* ── sections ── */
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  h2 {
+    margin: 0;
+    font-size: 1.28rem;
+    letter-spacing: -0.015em;
+    font-weight: 620;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px solid var(--line);
+    text-wrap: balance;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: -0.008em;
+  }
+
+  p { margin: 0; max-width: var(--measure); color: var(--ink-2); }
+  p strong { color: var(--ink); font-weight: 600; }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.08em 0.34em;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+  }
+
+  /* ── blockers ── */
+  .blockers { display: flex; flex-direction: column; gap: 0.9rem; }
+  .blocker {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.15rem 1.3rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+  .blocker h3 { display: flex; align-items: baseline; gap: 0.6rem; }
+  .blocker h3 .idx {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--absent);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── tables ── */
+  .scroll {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+  thead th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tbody td {
+    padding: 0.72rem 1rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody td:first-child { color: var(--ink); font-weight: 520; }
+
+  .pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.5rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .pill.ready   { color: var(--ready);   background: var(--ready-bg);   border: 1px solid var(--ready); }
+  .pill.partial { color: var(--partial); background: var(--partial-bg); border: 1px solid var(--partial); }
+  .pill.absent  { color: var(--absent);  background: var(--absent-bg);  border: 1px solid var(--absent); }
+
+  /* ── ordered sequence: numbering encodes real order ── */
+  ol.seq {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    counter-reset: step;
+  }
+  ol.seq > li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    gap: 0.9rem;
+    align-items: start;
+  }
+  ol.seq > li::before {
+    content: counter(step);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    height: 1.65rem;
+    display: grid;
+    place-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  ol.seq .body { display: flex; flex-direction: column; gap: 0.25rem; }
+
+  ul.plain {
+    margin: 0;
+    padding-left: 1.15rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    color: var(--ink-2);
+    max-width: var(--measure);
+  }
+  ul.plain li::marker { color: var(--line-strong); }
+
+  .readout {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    overflow-x: auto;
+    color: var(--ink-2);
+    line-height: 1.75;
+    white-space: pre;
+  }
+  .readout .hi { color: var(--accent); }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.2rem;
+    font-size: 13px;
+    color: var(--ink-3);
+    max-width: var(--measure);
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">
+      <span>codebase-navigator</span>
+      <span class="dot">/</span>
+      <span>verified against source</span>
+      <span class="dot">/</span>
+      <span>measured on casino-frontend</span>
+    </div>
+    <h1>UI Readiness Register</h1>
+    <p class="standfirst">
+      What the current backend can serve for the Living Software Understanding System spec,
+      what still needs building, and what cannot be built honestly yet.
+    </p>
+  </header>
+
+  <div class="verdict">
+    <p>
+      <strong>The schema is about one layer ahead of the extractors, and the server is about one layer behind the schema.</strong>
+      <code>types.ts</code> already models nearly everything the spec describes — journeys, branching transitions,
+      outcomes, evidence, provenance, confidence. The extractors mostly do not produce it, and the server can
+      neither store nor query it. Building the UI today would yield a convincing Overview, Code and Impact
+      experience alongside five dead tabs.
+    </p>
+  </div>
+
+  <section>
+    <h2>Lens readiness</h2>
+    <p>The spec defines nine lenses. Five have no data source at all.</p>
+    <div class="lensgrid">
+      <div class="lens is-partial"><span class="name">Overview</span><span class="state">Partial</span></div>
+      <div class="lens is-absent"><span class="name">Behavior</span><span class="state">Empty</span></div>
+      <div class="lens is-absent"><span class="name">Journey</span><span class="state">Empty</span></div>
+      <div class="lens is-partial"><span class="name">Code</span><span class="state">Partial</span></div>
+      <div class="lens is-absent"><span class="name">Why</span><span class="state">Empty</span></div>
+      <div class="lens is-partial"><span class="name">Impact</span><span class="state">Partial</span></div>
+      <div class="lens is-absent"><span class="name">Runtime</span><span class="state">Empty</span></div>
+      <div class="lens is-partial"><span class="name">History</span><span class="state">Partial</span></div>
+      <div class="lens is-absent"><span class="name">Tests</span><span class="state">Empty</span></div>
+    </div>
+
+    <div class="figures">
+      <div class="figure"><span class="n">5 / 9</span><span class="k">lenses render empty</span></div>
+      <div class="figure"><span class="n">1 / 7</span><span class="k">evidence sources have a producer</span></div>
+      <div class="figure"><span class="n">8</span><span class="k">HTTP endpoints, all graph CRUD</span></div>
+      <div class="figure"><span class="n">0</span><span class="k">trails stored anywhere</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Structural blockers</h2>
+    <div class="blockers">
+
+      <div class="blocker">
+        <h3><span class="idx">BLOCKER</span> No queryable entity model</h3>
+        <p>
+          The backend stores one JSONB blob per project across two tables — <code>graphs</code> and
+          <code>annotations</code> — and exposes eight endpoints, all graph-level CRUD. There is no projection,
+          search, trail, coverage, or change endpoint.
+        </p>
+        <p>
+          <code>computeProjection</code>, the model-to-UI boundary the architecture rests on, runs client-side
+          only and has no HTTP surface. Every route in the spec needs addressable entities, per-entity
+          projections, cross-entity search, versioned snapshots, and durable per-user state. None of that is
+          expressible over a document that must be loaded whole.
+        </p>
+      </div>
+
+      <div class="blocker">
+        <h3><span class="idx">BLOCKER</span> Five lenses have no data source</h3>
+        <p>
+          Behavior has no extractor for conditionals, error handlers or state transitions, and
+          <code>OutcomeKind</code> has zero producers. Journeys only ever come from hand-authored linear paths.
+          Why cannot work at all because <code>.md</code> is rejected at the file-read boundary, so ADRs and docs
+          are never read. Runtime has no telemetry source. Tests are <em>deliberately excluded</em> by
+          <code>SKIP_FILE_PATTERNS</code>.
+        </p>
+      </div>
+
+      <div class="blocker">
+        <h3><span class="idx">BLOCKER</span> Trails do not exist</h3>
+        <p>
+          The spec's central concept requires each step to preserve focus, lens, depth, question, notes and
+          timestamp, and trails to be saved, replayed, shared, forked, annotated and detected as stale. Today
+          <code>ExplorationQuery.trail</code> is an array of node ids used for scoring and never persisted;
+          in-app navigation history is a React ref that dies on reload.
+        </p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>The cheapest win, in detail</h2>
+    <p>
+      The OpenAPI importer considers only success codes. The spec you already parse declares
+      <strong>56 error responses</strong> that map almost directly onto <code>OutcomeKind</code>.
+    </p>
+    <div class="readout">importer reads   <span class="hi">['200','201','202','203','204']</span>   catalog.ts:472
+
+spec declares    21 × 401  →  permission_denied
+                 11 × 422  →  validation_error
+                 11 × 400  →  validation_error
+                  9 × 404  →  not_found
+                  4 × 412  →  conflict</div>
+    <p>
+      The emptiest and most novel lens in the product has real, code-derived outcome data sitting unread in a
+      file the importer already opens. This is the best ratio of value to effort in the register.
+    </p>
+  </section>
+
+  <section>
+    <h2>What is genuinely ready</h2>
+    <p>Measured, not assumed — these run against the real repository today.</p>
+    <ul class="plain">
+      <li><strong>Projection engine.</strong> Focus, altitude, lens and trail resolve to ranked entities with explanations, budgets, diversity selection and honest notices. Hub-dampening and diversity are mutation-verified.</li>
+      <li><strong>Semantic zoom.</strong> Six altitude tiers with coverage counts and loud degradation when a tier is empty — product 1, domain 10, behavior 50, system 120, implementation 483, code 0.</li>
+      <li><strong>Impact.</strong> Weighted blast radius, upstream and downstream.</li>
+      <li><strong>Extraction.</strong> OpenAPI, file-level codebase, Go backend, transitive API linking and git history — 646 nodes, roughly 1,700 links, 3% isolated.</li>
+      <li><strong>Merge and diff.</strong> Non-destructive, override-aware, deterministic; diff now covers journeys.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Data model gaps</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th scope="col">Requirement</th><th scope="col">Status</th><th scope="col">Note</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Journey actors, entry points, branching, outcomes</td><td><span class="pill ready">Ready</span></td><td>Landed in schema v1.3</td></tr>
+          <tr><td>AI-inferred marking, resolution states</td><td><span class="pill ready">Ready</span></td><td><code>EvidenceSummary.aiInferred</code>, <code>Resolution</code></td></tr>
+          <tr><td>Confidence banding (high / medium / low)</td><td><span class="pill partial">Partial</span></td><td>Raw 0–1 mean only; no bands, no entity-level confidence</td></tr>
+          <tr><td>Recently changed</td><td><span class="pill partial">Partial</span></td><td><code>metadata.lastModified</code> exists but is not a persisted state</td></tr>
+          <tr><td>Human verified</td><td><span class="pill partial">Partial</span></td><td>Source value exists; no verification record and no write path</td></tr>
+          <tr><td>Deprecated, stale, conflicting</td><td><span class="pill absent">Absent</span></td><td>No fields on entities</td></tr>
+          <tr><td>Relationship states</td><td><span class="pill absent">Absent</span></td><td>Runtime-verified, conflicting, stale, hidden — none exist on <code>Link</code></td></tr>
+          <tr><td>Knowledge conflict and resolution</td><td><span class="pill absent">Absent</span></td><td>Worse than missing — <code>summariseEvidence</code> averages confidence, so disagreement is silently blended away rather than surfaced</td></tr>
+          <tr><td>Journey variation by role, flag, subscription</td><td><span class="pill absent">Absent</span></td><td>Only a free-text condition string</td></tr>
+          <tr><td>Journey status</td><td><span class="pill absent">Absent</span></td><td>No field</td></tr>
+          <tr><td>Screen, Route, Test, Commit, PR, Issue, ADR entities</td><td><span class="pill absent">Absent</span></td><td>None are registered node types</td></tr>
+          <tr><td>Understanding coverage, eight dimensions per domain</td><td><span class="pill absent">Absent</span></td><td><code>meta.altitudeCoverage</code> counts nodes per zoom tier — a different measurement, not a substitute</td></tr>
+          <tr><td>Semantic change feed, before-vs-after behavior</td><td><span class="pill absent">Absent</span></td><td>Diff is structural: add, remove, modify counts</td></tr>
+          <tr><td>Temporal model history</td><td><span class="pill absent">Absent</span></td><td><code>PUT /graphs/:id</code> overwrites in place; no snapshots</td></tr>
+          <tr><td>Suggested questions and narrative</td><td><span class="pill absent">Absent</span></td><td>Both were dropped during projection implementation</td></tr>
+          <tr><td>Auth, identity, roles, domain ownership</td><td><span class="pill absent">Absent</span></td><td>No users table; annotation author is a client-supplied string</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Known traps</h2>
+    <ul class="plain">
+      <li><strong>Three backend importers are stubs.</strong> <code>nodejs.ts</code>, <code>python.ts</code> and <code>rust.ts</code> return <code>unsupported_language</code> in fourteen lines. The Node plugin declares <code>.js .mjs .cjs .ts</code>, so a JavaScript-dominant tree dispatches to a stub and silently yields nothing.</li>
+      <li><strong><code>Health</code> is declared and consumed nowhere.</strong> Dead field in <code>types.ts</code>.</li>
+      <li><strong>Name collision on "lens".</strong> <code>src/schema/entity/lens.ts</code> means entity-scoped subgraph filtering, unrelated to the spec's lenses. Worth resolving before UI work begins.</li>
+      <li><strong>Deep links need redefining.</strong> <code>ViewState</code> encodes the retired 3D graph's camera and selection, not focus, lens, altitude and trail.</li>
+      <li><strong>The <code>code</code> altitude is empty</strong> because extraction is file-level. Deliberately deferred after review: the pathology concentrates in a single file, and a regex symbol extractor misses exports in 47% of files.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Sequence before building the UI</h2>
+    <p>Ordered by dependency — each step makes the next one worth doing.</p>
+    <ol class="seq">
+      <li><div class="body"><h3>Read what is already on disk</h3><p>OpenAPI error responses, test files, and markdown. Turns three dead lenses into partially populated ones without any new data source.</p></div></li>
+      <li><div class="body"><h3>Hand-author one branching journey</h3><p>Deposit or bonus claim, wired to real node ids. The only way Behavior and Journey get exercised, and what the prototype was always meant to test.</p></div></li>
+      <li><div class="body"><h3>Add a projection endpoint and trail persistence</h3><p>The minimum server surface any route in the spec requires.</p></div></li>
+      <li><div class="body"><h3>Then build the UI</h3><p>Against a backend that can answer the questions the interface asks of it.</p></div></li>
+    </ol>
+  </section>
+
+  <footer>
+    Every claim was verified against source rather than inferred from documentation. Figures come from running
+    the full pipeline against casino-frontend: 731 source files, a 4,243-line OpenAPI spec, 580 commits.
+  </footer>
+
+</div>

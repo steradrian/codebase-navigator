@@ -83,6 +83,13 @@ export type LinkType = {
 // ─── entity metadata ─────────────────────────────────────────
 
 export type NodeMetadata = {
+  /**
+   * v1.3 — set on nodes of type 'outcome'. Which terminal state this
+   * node represents, so "show me every possible outcome" can group and
+   * filter without re-deriving meaning from a status code.
+   */
+  outcomeKind?: OutcomeKind
+
   lastModified?: string // ISO 8601
   health?: Health
   team?: string
