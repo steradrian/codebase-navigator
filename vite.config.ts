@@ -11,8 +11,20 @@ import { fileURLToPath, URL } from 'node:url'
 function apiMiddleware(): Plugin {
   return {
     name: 'codebase-navigator-api',
+    // Vitest starts a Vite server too, and mounting the API there would
+    // open a database connection for a suite of pure-function tests and
+    // fail the whole run when no database is present.
+    apply: (_config, { command }) => command === 'serve' && !process.env.VITEST,
     async configureServer(server) {
       // Dynamic import so schema generation / db-less tools don't crash.
+      //
+      // Note for anyone extending the server: Vite inlines this module
+      // and its transitive graph into the bundled config, where the `@/`
+      // alias does not resolve. Type-only `@/` imports are fine — they
+      // are erased — but a VALUE import via `@/` anywhere reachable from
+      // src/server will break `pnpm dev` with an opaque
+      // "Cannot find package '@/...'". Use relative imports in that
+      // graph. See src/schema/projection/index.ts.
       const [{ createApp }, { getRequestListener }] = await Promise.all([
         import('./src/server/api'),
         import('@hono/node-server'),

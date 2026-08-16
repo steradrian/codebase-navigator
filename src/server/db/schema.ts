@@ -10,6 +10,11 @@
 //   - `annotations` — reserved for GE-023. Separate row-per-annotation
 //                     storage because annotations are appended
 //                     independently of graph saves.
+//   - `trails`      — saved exploration paths. Stored per-row rather than
+//                     inside the graph blob because a trail belongs to a
+//                     person, is written far more often than the graph,
+//                     and must survive a re-import that rewrites the
+//                     graph wholesale.
 // ─────────────────────────────────────────────────────────────────
 
 import { sql } from 'drizzle-orm'
@@ -22,6 +27,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 import type { Schema } from '../../types'
+import type { TrailStep, TrailState, TrailVisibility } from '../../schema/trail'
 
 export const graphs = pgTable('graphs', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -62,3 +68,27 @@ export type AnnotationInsert = typeof annotations.$inferInsert
 // Suppress the unused-import lint for `sql` — Drizzle uses it implicitly
 // when inference fails; keep it imported for expression-level defaults.
 export const _sql = sql
+
+export const trails = pgTable('trails', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  graphId: uuid('graph_id')
+    .notNull()
+    .references(() => graphs.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  author: text('author').notNull(),
+  visibility: text('visibility').$type<TrailVisibility>().notNull().default('personal'),
+  state: text('state').$type<TrailState>().notNull().default('in_progress'),
+  // The ordered path. Stored as JSONB because steps are only ever read
+  // and written as a whole sequence — a trail is not queried step-wise.
+  steps: jsonb('steps').$type<TrailStep[]>().notNull().default([]),
+  tags: jsonb('tags').$type<string[]>(),
+  // Provenance of a branch: which trail and which step it grew from.
+  forkedFromTrailId: uuid('forked_from_trail_id'),
+  forkedFromStepId: text('forked_from_step_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type TrailRow = typeof trails.$inferSelect
+export type TrailInsert = typeof trails.$inferInsert

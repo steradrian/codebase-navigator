@@ -14,6 +14,7 @@ import { Hono } from 'hono'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { getDb } from './db/client'
 import { graphs, annotations } from './db/schema'
+import { registerExploreRoutes } from './routes/explore'
 import type { Schema } from '../types'
 import { validate } from '../schema/validate'
 
@@ -26,6 +27,11 @@ type GraphSummary = {
 export function createApp() {
   const app = new Hono()
   const db = getDb()
+
+  // Read-side routes that compute rather than fetch: projection, search,
+  // coverage and trails. Registered first so the graph CRUD below stays
+  // recognisably a document store.
+  registerExploreRoutes(app, db)
 
   // ── list ───────────────────────────────────────────────────
   app.get('/graphs', async (c) => {
