@@ -38,6 +38,7 @@ import type {
 } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
 import { extractTests, isTestFile } from '@/importers/codebase/tests'
+import { isDocFile, parseDocs } from '@/importers/docs'
 import { CODE_EXT, extractImports, norm, resolveImport } from '@/importers/codebase/resolve'
 import { propagateEntities } from '@/schema/entity/propagate'
 import { assignAltitudes } from '@/schema/altitude'
@@ -75,6 +76,8 @@ const DEFAULT_NODE_TYPES: Record<string, { color: string; label: string; glow?: 
   ui: { color: '#ffd740', label: 'UI', glow: 0.1 }, // fallback for legacy data
   external: { color: '#78909c', label: 'External', glow: 0.06 },
   test: { color: '#7fd1ae', label: 'Test', glow: 0.08 },
+  document: { color: '#9fa8da', label: 'Document', glow: 0.06 },
+  decision: { color: '#b39ddb', label: 'Decision', glow: 0.1 },
 }
 
 const DEFAULT_LINK_TYPES: Record<string, LinkType> = {
@@ -82,6 +85,7 @@ const DEFAULT_LINK_TYPES: Record<string, LinkType> = {
   dependency: { color: '#3a2a5c', label: 'Dependency', dashed: true },
   triggers: { color: '#4a3a1c', label: 'Triggers', animated: true },
   tests: { color: '#1f4a3a', label: 'Tests', dashed: true },
+  documents: { color: '#2f3a5c', label: 'Documents', dashed: true },
 }
 
 const SKIP_FILE_PATTERNS = [
@@ -187,10 +191,16 @@ export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
   // makes about its own behaviour, and the Tests lens needs them.
   const effective = new Map<string, string>()
   const testFiles = new Map<string, string>()
+  const docFiles = new Map<string, string>()
   let filesConsidered = 0
   for (const [k, v] of files) {
     filesConsidered++
     const p = norm(k)
+    if (isDocFile(p)) {
+      // Handled by the documentation importer, not skipped.
+      docFiles.set(p, v)
+      continue
+    }
     if (!CODE_EXT.test(p)) {
       warnings.push({ kind: 'skipped_file', path: p, reason: 'non-code file' })
       continue
@@ -216,13 +226,18 @@ export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
   // Tests are resolved first so each product file can be created already
   // carrying the evidence its tests provide.
   const testResult = extractTests(testFiles, fileSet)
+  const docResult = parseDocs(docFiles, fileSet)
 
   for (const [path] of effective) {
     const classified = classify(path)
     const id = nodeIdForPath(path)
     if (seenNodes.has(id)) continue
     seenNodes.add(id)
-    const testEvidence = testResult.evidenceBySubject.get(path)
+    const gathered = [
+      ...(testResult.evidenceBySubject.get(path) ?? []),
+      ...(docResult.evidenceBySubject.get(path) ?? []),
+    ]
+    const testEvidence = gathered.length > 0 ? gathered : undefined
     nodes.push({
       id,
       name: classified.name,
@@ -234,12 +249,12 @@ export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
     })
   }
 
-  for (const node of testResult.nodes) {
+  for (const node of [...testResult.nodes, ...docResult.nodes]) {
     if (seenNodes.has(node.id)) continue
     seenNodes.add(node.id)
     nodes.push(node)
   }
-  for (const link of testResult.links) {
+  for (const link of [...testResult.links, ...docResult.links]) {
     if (seenLinks.has(link.id)) continue
     seenLinks.add(link.id)
     links.push(link)

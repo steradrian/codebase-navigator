@@ -73,6 +73,14 @@ const ALTITUDE_BY_NODE_TYPE: Readonly<Record<string, Altitude>> = {
   ui: 'implementation',
   // A test sits at the level of the thing it verifies.
   test: 'implementation',
+
+  // Documents are durable parts of the product that are not code. They
+  // sit at `system` rather than `implementation` so READMEs and ADRs do
+  // not crowd the finest tier alongside source files. The choice has
+  // limited reach: the Why lens reads documentation *evidence*, which is
+  // attached to the entities themselves and is altitude-independent.
+  document: 'system',
+  decision: 'system',
 }
 
 /**
