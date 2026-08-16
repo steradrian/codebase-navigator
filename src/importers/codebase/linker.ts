@@ -12,10 +12,12 @@
 //      Extracts the path portion after the interpolated base URL.
 //      HTTP method is detected by scanning the nearby options object
 //      for `method: 'POST'` etc. (defaults to GET).
-//   3. Indirect calls via imports: if file A contains `client.GET('/x')`
-//      inside `export function fetchX` and file B does
-//      `import { fetchX } from 'A'` + calls `fetchX(...)`, emit an edge
-//      from B → GET /x. One hop only.
+//   3. Indirect calls via imports, iterated to a fixed point: if file A
+//      contains `client.GET('/x')` inside `export function fetchX` and
+//      file B does `import { fetchX } from 'A'` + calls `fetchX(...)`,
+//      emit an edge from B → GET /x. Each round promotes wrapper files
+//      into the API layer, so component → hook → fetch-function chains
+//      resolve rather than stopping at the first wrapper.
 //
 // Output is only NEW edges (dedup'd against existing schema links).
 // Pure function, deterministic, no I/O.
@@ -77,8 +79,14 @@ const RAW_FETCH_RE = /fetch\s*\(\s*`\$\{[^}]+\}([^`]*)`([\s\S]{0,400}?)\)/g
 // Inside the raw-fetch options blob, find a `method:` key.
 const METHOD_PROP_RE = /method\s*:\s*['"`](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)['"`]/i
 
+/**
+ * Maximum wrapper layers pass 3 will see through. Chains deeper than
+ * this are vanishingly rare, and the cap bounds work on cyclic imports.
+ */
+const MAX_INDIRECTION_HOPS = 5
+
 // Detect function definitions for pass-3 attribution.
-const EXPORT_FN_RE = /export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)|export\s+(?:const|let|var)\s+(\w+)\s*=/g
+const EXPORT_FN_RE =/export\s+(?:default\s+)?(?:async\s+)?function\s+(\w+)|export\s+(?:const|let|var)\s+(\w+)\s*=/g
 
 /**
  * For a single source file, find every (method, path) call site.
@@ -120,10 +128,16 @@ function extractCallSites(source: string, file: string): Array<{
  * is attributed to export-N. Over-connects when helpers share endpoints;
  * acceptable per the ticket.
  */
-function buildApiFunctionMap(
-  file: string,
-  source: string,
-): Map<string, Array<{ method: string; path: string }>> {
+type Endpoint = { method: string; path: string }
+
+/**
+ * Approximate body ranges for every exported binding in a file.
+ *
+ * Each export owns the source from its declaration until the next one
+ * starts. Crude, but it does not need to be exact: it only has to
+ * attribute a call site to the right exported symbol.
+ */
+function exportRanges(source: string): Array<{ name: string; start: number; end: number }> {
   const ranges: Array<{ name: string; start: number; end: number }> = []
   EXPORT_FN_RE.lastIndex = 0
   let m: RegExpExecArray | null
@@ -132,8 +146,15 @@ function buildApiFunctionMap(
     if (!name) continue
     ranges.push({ name, start: m.index, end: source.length })
   }
-  // Close each range at the start of the next export.
   for (let i = 0; i < ranges.length - 1; i++) ranges[i].end = ranges[i + 1].start
+  return ranges
+}
+
+function buildApiFunctionMap(
+  file: string,
+  source: string,
+): Map<string, Array<{ method: string; path: string }>> {
+  const ranges = exportRanges(source)
 
   const map = new Map<string, Array<{ method: string; path: string }>>()
   for (const r of ranges) {
@@ -246,25 +267,73 @@ export function extractCodebaseApiLinks(
     }
   }
 
-  // Pass 3: import-indirection.
-  for (const [path, source] of effective) {
-    const namedImports = extractNamedImports(source)
-    if (namedImports.length === 0) continue
+  // Pass 3: import-indirection, iterated to a fixed point.
+  //
+  // A single hop only reaches files that import the API layer directly.
+  // Real apps wrap it: a component imports a hook, the hook calls a
+  // fetch function, and only that fetch function names the endpoint.
+  // Stopping at one hop leaves every component unlinked, which in turn
+  // strands entity propagation — measured on casino-frontend, one hop
+  // linked 70 files out of 731.
+  //
+  // Each round promotes wrapper files into `apiFileFunctionMap`, so the
+  // next round can see through them. Converges when no file learns a
+  // new endpoint; the cap is a backstop against pathological cycles.
+  for (let hop = 0; hop < MAX_INDIRECTION_HOPS; hop++) {
+    let learned = false
 
-    for (const { name, from } of namedImports) {
-      const resolved = resolveImport(from, path, fileSet)
-      if (!resolved) continue
-      const fnMap = apiFileFunctionMap.get(resolved)
-      if (!fnMap) continue
-      const endpoints = fnMap.get(name)
-      if (!endpoints || endpoints.length === 0) continue
-      // Only emit if the importer actually calls this name.
-      if (!isCalled(source, name)) continue
-      for (const ep of endpoints) {
-        stats.indirectHits++
-        emit(path, ep.method, ep.path)
+    for (const [path, source] of effective) {
+      const namedImports = extractNamedImports(source)
+      if (namedImports.length === 0) continue
+
+      // Imported symbols in this file that are known to reach endpoints.
+      const reachable = new Map<string, Endpoint[]>()
+      for (const { name, from } of namedImports) {
+        const resolved = resolveImport(from, path, fileSet)
+        if (!resolved) continue
+        const endpoints = apiFileFunctionMap.get(resolved)?.get(name)
+        if (!endpoints || endpoints.length === 0) continue
+        // Importing without calling is not a data-flow relationship.
+        if (!isCalled(source, name)) continue
+        reachable.set(name, endpoints)
+      }
+      if (reachable.size === 0) continue
+
+      for (const endpoints of reachable.values()) {
+        for (const ep of endpoints) {
+          const before = newLinks.size
+          emit(path, ep.method, ep.path)
+          // Count a hit only when an edge was actually created, so
+          // repeated rounds cannot inflate the statistic.
+          if (newLinks.size > before) stats.indirectHits++
+        }
+      }
+
+      // Promote: any exported binding here that calls a reaching symbol
+      // now reaches those endpoints too, making this file part of the
+      // API layer for subsequent rounds.
+      const own = apiFileFunctionMap.get(path) ?? new Map<string, Endpoint[]>()
+      let promoted = false
+      for (const range of exportRanges(source)) {
+        const slice = source.slice(range.start, range.end)
+        for (const [symbol, endpoints] of reachable) {
+          if (!isCalled(slice, symbol)) continue
+          const list = own.get(range.name) ?? []
+          for (const ep of endpoints) {
+            if (list.some((e) => e.method === ep.method && e.path === ep.path)) continue
+            list.push(ep)
+            promoted = true
+          }
+          own.set(range.name, list)
+        }
+      }
+      if (promoted) {
+        apiFileFunctionMap.set(path, own)
+        learned = true
       }
     }
+
+    if (!learned) break
   }
 
   const links = [...newLinks.values()].sort((a, b) => a.id.localeCompare(b.id))

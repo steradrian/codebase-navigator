@@ -452,3 +452,88 @@ describe('extractBackendToApiLinks — edge cases', () => {
     expect(result.stats.beHandlersSeen).toBe(0)
   })
 })
+
+// ─── transitive indirection ──────────────────────────────────
+
+describe('extractCodebaseApiLinks — multi-hop indirection', () => {
+  // The shape real apps actually have, and the reason one hop was not
+  // enough: a component imports a hook, the hook calls a fetch
+  // function, and only that fetch function names the endpoint.
+  // Declared deepest-consumer-first ON PURPOSE. In dependency order a
+  // single round resolves the whole chain by accident: each wrapper is
+  // promoted just before its consumer is visited. Reversing the order
+  // means the consumer is seen before its dependency is known, so only
+  // a genuine fixed-point loop links it — which is what this suite is
+  // supposed to be testing. Real file trees give no ordering guarantee.
+  const chain = () =>
+    new Map<string, string>([
+      ['src/components/Profile.tsx', `
+        import { usePlayer } from '../hooks/use-player'
+        export function Profile() { const p = usePlayer(); return null }
+      `],
+      ['src/hooks/use-player.ts', `
+        import { getPlayer } from '../api/fetch-functions'
+        export const usePlayer = () => getPlayer()
+      `],
+      ['src/api/fetch-functions.ts', `
+        import { client } from './client'
+        export function getPlayer() { return client.GET('/api/player') }
+      `],
+    ])
+
+  const ops = [{ method: 'GET', path: '/api/player' }]
+  const targets = (files: Map<string, string>) => {
+    const r = extractCodebaseApiLinks(files, makeSchemaFor(files, ops))
+    return r.links.map((l) => l.source)
+  }
+
+  it('links the direct caller', () => {
+    expect(targets(chain())).toContain('codebase:file:src/api/fetch-functions.ts')
+  })
+
+  it('links the first wrapper (one hop)', () => {
+    expect(targets(chain())).toContain('codebase:file:src/hooks/use-player.ts')
+  })
+
+  it('links the second wrapper, which one-hop resolution missed', () => {
+    expect(targets(chain())).toContain('codebase:file:src/components/Profile.tsx')
+  })
+
+  it('does not link a file that imports without calling', () => {
+    const files = chain()
+    files.set('src/components/Unused.tsx', `
+      import { usePlayer } from '../hooks/use-player'
+      export function Unused() { return null }
+    `)
+    expect(targets(files)).not.toContain('codebase:file:src/components/Unused.tsx')
+  })
+
+  it('counts each emitted edge once despite repeated rounds', () => {
+    const files = chain()
+    const r = extractCodebaseApiLinks(files, makeSchemaFor(files, ops))
+    expect(r.stats.indirectHits).toBe(r.links.length - r.stats.directHits)
+    expect(new Set(r.links.map((l) => l.id)).size).toBe(r.links.length)
+  })
+
+  it('is deterministic across runs', () => {
+    const a = extractCodebaseApiLinks(chain(), makeSchemaFor(chain(), ops))
+    const b = extractCodebaseApiLinks(chain(), makeSchemaFor(chain(), ops))
+    expect(JSON.stringify(a.links)).toBe(JSON.stringify(b.links))
+  })
+
+  it('terminates on a circular import chain', () => {
+    const files = new Map<string, string>([
+      ['src/a.ts', `
+        import { b } from './b'
+        import { client } from './client'
+        export function a() { b(); return client.GET('/api/player') }
+      `],
+      ['src/b.ts', `
+        import { a } from './a'
+        export function b() { return a() }
+      `],
+    ])
+    const r = extractCodebaseApiLinks(files, makeSchemaFor(files, ops))
+    expect(r.links.length).toBeGreaterThan(0)
+  })
+})
