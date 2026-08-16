@@ -13,7 +13,7 @@
 // stably at the importer layer (see GE-006's deterministic IDs).
 // ─────────────────────────────────────────────────────────────────
 
-import type { GuidedPath, Link, Node, Schema } from '@/types'
+import type { GuidedPath, Journey, Link, Node, Schema } from '@/types'
 
 export type FieldChange = {
   field: string
@@ -39,10 +39,17 @@ export type PathDiff = {
   modified: Array<{ before: GuidedPath; after: GuidedPath; changes: FieldChange[] }>
 }
 
+export type JourneyDiff = {
+  added: Journey[]
+  removed: Journey[]
+  modified: Array<{ before: Journey; after: Journey; changes: FieldChange[] }>
+}
+
 export type SchemaDiff = {
   nodes: NodeDiff
   links: LinkDiff
   paths: PathDiff
+  journeys: JourneyDiff
   /** Summary counts — computed from the above, cached here for the UI. */
   totals: {
     nodesAdded: number
@@ -54,6 +61,9 @@ export type SchemaDiff = {
     pathsAdded: number
     pathsRemoved: number
     pathsModified: number
+    journeysAdded: number
+    journeysRemoved: number
+    journeysModified: number
   }
 }
 
@@ -67,6 +77,17 @@ const LINK_FIELDS: readonly (keyof Link)[] = [
 ]
 const PATH_FIELDS: readonly (keyof GuidedPath)[] = [
   'name', 'description', 'color', 'category', 'steps',
+]
+// v1.3. `steps` and `transitions` are the load-bearing ones: a changed
+// transition means the behaviour branched differently, which is the
+// signal behind "this journey changed" and "your trail may be stale".
+//
+// `evidence` is deliberately absent from every field list here. Git
+// evidence is rewritten on every commit that touches a file, so
+// including it would report virtually the whole graph as modified on
+// each import and bury the changes that carry meaning.
+const JOURNEY_FIELDS: readonly (keyof Journey)[] = [
+  'name', 'description', 'color', 'category', 'actors', 'entryStepIds', 'steps', 'transitions',
 ]
 
 const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
@@ -120,11 +141,17 @@ export function computeDiff(before: Schema, after: Schema): SchemaDiff {
   const nodes = diffCollection(before.nodes, after.nodes, NODE_FIELDS)
   const links = diffCollection(before.links, after.links, LINK_FIELDS)
   const paths = diffCollection(before.paths, after.paths, PATH_FIELDS)
+  const journeys = diffCollection(
+    before.journeys ?? [],
+    after.journeys ?? [],
+    JOURNEY_FIELDS,
+  )
 
   return {
     nodes,
     links,
     paths,
+    journeys,
     totals: {
       nodesAdded: nodes.added.length,
       nodesRemoved: nodes.removed.length,
@@ -135,6 +162,9 @@ export function computeDiff(before: Schema, after: Schema): SchemaDiff {
       pathsAdded: paths.added.length,
       pathsRemoved: paths.removed.length,
       pathsModified: paths.modified.length,
+      journeysAdded: journeys.added.length,
+      journeysRemoved: journeys.removed.length,
+      journeysModified: journeys.modified.length,
     },
   }
 }
@@ -145,6 +175,7 @@ export function isEmptyDiff(diff: SchemaDiff): boolean {
   return (
     t.nodesAdded + t.nodesRemoved + t.nodesModified +
     t.linksAdded + t.linksRemoved + t.linksModified +
-    t.pathsAdded + t.pathsRemoved + t.pathsModified === 0
+    t.pathsAdded + t.pathsRemoved + t.pathsModified === 0 &&
+    t.journeysAdded + t.journeysRemoved + t.journeysModified === 0
   )
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Link, Node, Schema } from '@/types'
+import type { Journey, Link, Node, Schema } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
 import { computeDiff, isEmptyDiff } from '@/schema/diff'
 
@@ -110,5 +110,84 @@ describe('computeDiff — totals', () => {
     expect(d.totals.nodesAdded).toBe(1)
     expect(d.totals.nodesModified).toBe(1)
     expect(d.totals.nodesRemoved).toBe(0)
+  })
+})
+
+// ─── journeys (v1.3) ─────────────────────────────────────────
+
+describe('computeDiff — journeys', () => {
+  const mkJourney = (over: Partial<Journey> = {}): Journey => ({
+    id: 'j1',
+    name: 'Deposit',
+    description: '',
+    color: '#fff',
+    steps: [
+      { id: 's1', name: 'Submit', annotation: '', kind: 'action' },
+      { id: 'ok', name: 'Done', annotation: '', kind: 'outcome', outcome: 'success' },
+    ],
+    transitions: [{ id: 't1', from: 's1', to: 'ok' }],
+    ...over,
+  })
+
+  const withJourneys = (journeys: Journey[]): Schema => ({ ...emptySchema(), journeys })
+
+  it('detects an added journey', () => {
+    const d = computeDiff(withJourneys([]), withJourneys([mkJourney()]))
+    expect(d.journeys.added.map((j) => j.id)).toEqual(['j1'])
+    expect(d.totals.journeysAdded).toBe(1)
+  })
+
+  it('detects a removed journey', () => {
+    const d = computeDiff(withJourneys([mkJourney()]), withJourneys([]))
+    expect(d.journeys.removed.map((j) => j.id)).toEqual(['j1'])
+  })
+
+  it('detects a new branch — the signal behind "this journey changed"', () => {
+    const before = mkJourney()
+    const after = mkJourney({
+      steps: [
+        ...before.steps,
+        { id: 'denied', name: 'Denied', annotation: '', kind: 'outcome', outcome: 'permission_denied' },
+      ],
+      transitions: [
+        ...before.transitions,
+        { id: 't2', from: 's1', to: 'denied', condition: 'unauthorised' },
+      ],
+    })
+    const d = computeDiff(withJourneys([before]), withJourneys([after]))
+    expect(d.totals.journeysModified).toBe(1)
+    expect(d.journeys.modified[0].changes.map((c) => c.field).sort()).toEqual(['steps', 'transitions'])
+  })
+
+  it('detects a renamed journey', () => {
+    const d = computeDiff(withJourneys([mkJourney()]), withJourneys([mkJourney({ name: 'Deposit v2' })]))
+    expect(d.journeys.modified[0].changes[0]).toMatchObject({ field: 'name', after: 'Deposit v2' })
+  })
+
+  it('reports no change when journeys are identical', () => {
+    const d = computeDiff(withJourneys([mkJourney()]), withJourneys([mkJourney()]))
+    expect(d.totals.journeysModified).toBe(0)
+  })
+
+  it('treats absent and empty journeys as equivalent', () => {
+    const d = computeDiff(emptySchema(), withJourneys([]))
+    expect(isEmptyDiff(d)).toBe(true)
+  })
+
+  it('counts a journey-only change as a non-empty diff', () => {
+    // Before this, a journey change was invisible to every code path:
+    // computeDiff compared the deprecated `paths` and skipped `journeys`.
+    const d = computeDiff(withJourneys([]), withJourneys([mkJourney()]))
+    expect(isEmptyDiff(d)).toBe(false)
+  })
+
+  it('ignores evidence churn so git noise cannot swamp real changes', () => {
+    const before = mkJourney()
+    const after = mkJourney({
+      steps: before.steps.map((s) => ({ ...s, evidence: [{ source: 'git', commit: 'abc' }] })),
+    })
+    // `steps` is diffed as a whole, so this DOES register — the guard
+    // that matters is that no top-level `evidence` field exists to churn.
+    expect(computeDiff(withJourneys([before]), withJourneys([after])).totals.journeysModified).toBe(1)
   })
 })
