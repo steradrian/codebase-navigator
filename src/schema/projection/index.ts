@@ -8,7 +8,7 @@
 // same arguments produce byte-identical output.
 // ─────────────────────────────────────────────────────────────────
 
-import type { Altitude, Node, Schema } from '@/types'
+import type { Altitude, EvidenceSource, Node, Schema } from '@/types'
 import { nearestPopulatedAltitude, populatedAltitudes } from '@/schema/altitude'
 import {
   behaviouralImportance,
@@ -50,11 +50,14 @@ const SYNTHETIC_DOMAIN_PREFIX = 'synthetic:domain:'
  * projection says so rather than presenting an empty or arbitrary
  * result as an answer.
  */
-const EVIDENCE_DEPENDENT: Partial<Record<Lens, string>> = {
-  why: 'no documentation, git or human evidence has been extracted yet',
-  history: 'no git evidence has been extracted yet',
-  tests: 'no test evidence has been extracted yet',
-  runtime: 'no runtime evidence has been extracted yet',
+const EVIDENCE_DEPENDENT: Partial<Record<Lens, { sources: EvidenceSource[]; reason: string }>> = {
+  why: {
+    sources: ['documentation', 'human', 'git'],
+    reason: 'no documentation, git or human evidence has been extracted yet',
+  },
+  history: { sources: ['git'], reason: 'no git evidence has been extracted yet' },
+  tests: { sources: ['test'], reason: 'no test evidence has been extracted yet' },
+  runtime: { sources: ['runtime'], reason: 'no runtime evidence has been extracted yet' },
 }
 
 const relationToFocus = (focus: Node, candidate: Node): RelationToFocus => {
@@ -216,9 +219,17 @@ export function computeProjection(schema: Schema, query: ExplorationQuery): Proj
     }
   }
 
-  const unsupported = EVIDENCE_DEPENDENT[query.lens]
-  if (unsupported && !schema.nodes.some((n) => n.evidence?.length)) {
-    notices.push({ kind: 'lens_unsupported_by_data', lens: query.lens, reason: unsupported })
+  // Checked per required source, not "is there any evidence at all".
+  // The coarse version stopped firing the moment ANY extractor produced
+  // anything, so the runtime lens silently returned nothing instead of
+  // saying it had no runtime data — the exact silent-emptiness this
+  // notice exists to prevent.
+  const dependency = EVIDENCE_DEPENDENT[query.lens]
+  if (
+    dependency &&
+    !schema.nodes.some((n) => n.evidence?.some((e) => dependency.sources.includes(e.source)))
+  ) {
+    notices.push({ kind: 'lens_unsupported_by_data', lens: query.lens, reason: dependency.reason })
   }
 
   const budget = query.budget ?? DEFAULT_BUDGET[altitude]

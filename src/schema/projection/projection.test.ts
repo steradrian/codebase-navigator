@@ -373,3 +373,34 @@ describe('computeProjection — empty results explain themselves', () => {
     expect(p.meta.notices.some((n) => n.kind === 'no_candidates_at_altitude')).toBe(false)
   })
 })
+
+describe('computeProjection — lens support is judged per required source', () => {
+  const evidenced = (source: 'git' | 'runtime' | 'test') => {
+    const s = web()
+    s.nodes[1].evidence = [{ source, confidence: 1 }]
+    return s
+  }
+
+  it('still flags runtime when only git evidence exists', () => {
+    // The earlier check asked "is there ANY evidence", so it stopped
+    // firing the moment any extractor produced anything — and the
+    // runtime lens silently returned nothing instead of saying why.
+    const p = computeProjection(evidenced('git'), q({ lens: 'runtime' }))
+    expect(p.meta.notices.some((n) => n.kind === 'lens_unsupported_by_data')).toBe(true)
+  })
+
+  it('stops flagging runtime once runtime evidence exists', () => {
+    const p = computeProjection(evidenced('runtime'), q({ lens: 'runtime' }))
+    expect(p.meta.notices.some((n) => n.kind === 'lens_unsupported_by_data')).toBe(false)
+  })
+
+  it('accepts git evidence for the history lens', () => {
+    const p = computeProjection(evidenced('git'), q({ lens: 'history' }))
+    expect(p.meta.notices.some((n) => n.kind === 'lens_unsupported_by_data')).toBe(false)
+  })
+
+  it('does not accept git evidence for the tests lens', () => {
+    const p = computeProjection(evidenced('git'), q({ lens: 'tests' }))
+    expect(p.meta.notices.some((n) => n.kind === 'lens_unsupported_by_data')).toBe(true)
+  })
+})
