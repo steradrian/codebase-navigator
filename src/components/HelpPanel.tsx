@@ -104,7 +104,7 @@ export function HelpPanel({ open, onClose }: Props) {
           </Section>
 
           <div style={{ marginTop: 20, fontSize: 10, color: '#555', textAlign: 'center' }}>
-            Graph Explorer · local-first · no telemetry
+            Codebase Navigator · local-first · no telemetry
           </div>
         </div>
       </div>

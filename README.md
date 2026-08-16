@@ -1,4 +1,4 @@
-# Graph Explorer
+# Codebase Navigator
 
 Interactive 3D force-directed graph visualization for mapping system architecture, database relationships, user journeys, and organizational knowledge.
 

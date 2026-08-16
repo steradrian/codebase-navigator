@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────
-// Schema v1.0 — Graph Explorer's canonical data model.
+// Schema v1.0 — Codebase Navigator's canonical data model.
 //
 // Changes vs v0.2:
 //   - Links now have stable `id`s (so annotations and diffs can target them)

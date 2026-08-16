@@ -892,7 +892,7 @@ export default function GraphExplorer() {
       // Let the debounce window pass before re-enabling saves.
       setTimeout(() => { suppressSaveRef.current = false }, 600)
     } catch (err) {
-      console.error('[graph-explorer] Failed to load project', id, err)
+      console.error('[codebase-navigator] Failed to load project', id, err)
     }
   }, [activePath, clearSelection, exitPath, resetHistory])
 
@@ -915,7 +915,7 @@ export default function GraphExplorer() {
       await refreshProjects()
       await loadProject(summary.id)
     } catch (err) {
-      console.error('[graph-explorer] Failed to create project', err)
+      console.error('[codebase-navigator] Failed to create project', err)
       alert('Could not create project. Is the server running?')
     }
   }, [refreshProjects, loadProject])
@@ -937,7 +937,7 @@ export default function GraphExplorer() {
         }
       }
     } catch (err) {
-      console.error('[graph-explorer] Failed to delete project', err)
+      console.error('[codebase-navigator] Failed to delete project', err)
     }
   }, [activeProjectId, loadProject, refreshProjects])
 
@@ -955,7 +955,7 @@ export default function GraphExplorer() {
       if (id === activeProjectId) setActiveProjectName(name)
       await refreshProjects()
     } catch (err) {
-      console.error('[graph-explorer] Failed to rename project', err)
+      console.error('[codebase-navigator] Failed to rename project', err)
     }
   }, [activeProjectId, schema, refreshProjects])
 
@@ -996,7 +996,7 @@ export default function GraphExplorer() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       updateGraph(activeProjectId, schema).catch((err) => {
-        console.error('[graph-explorer] Save failed', err)
+        console.error('[codebase-navigator] Save failed', err)
         setOffline(true)
       })
     }, 500)

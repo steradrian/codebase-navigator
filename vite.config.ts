@@ -10,7 +10,7 @@ import { fileURLToPath, URL } from 'node:url'
  */
 function apiMiddleware(): Plugin {
   return {
-    name: 'graph-explorer-api',
+    name: 'codebase-navigator-api',
     async configureServer(server) {
       // Dynamic import so schema generation / db-less tools don't crash.
       const [{ createApp }, { getRequestListener }] = await Promise.all([

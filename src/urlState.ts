@@ -95,7 +95,7 @@ export function decodeViewState(queryString: string): ViewState {
     const pins = p.get('pins')
     if (pins) state.pinnedClusterIds = pins.split(',').filter(Boolean)
   } catch (err) {
-    console.warn('[graph-explorer] Failed to parse URL state; using defaults.', err)
+    console.warn('[codebase-navigator] Failed to parse URL state; using defaults.', err)
   }
   return state
 }
