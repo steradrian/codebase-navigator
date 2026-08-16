@@ -39,6 +39,7 @@ import {
   resolveOperationEntity,
 } from '@/schema/entity/catalog'
 import { propagateEntities } from '@/schema/entity/propagate'
+import { assignAltitudes } from '@/schema/altitude'
 import type {
   OpenAPIOperation,
   OpenAPIPathItem,
@@ -298,7 +299,7 @@ export function parseOpenAPI(spec: unknown): ParseResult {
 
   // GE-115b — propagate entities through the graph so DB↔API edges
   // reinforce each other. Pure and idempotent.
-  const propagated = propagateEntities(result)
+  const propagated = assignAltitudes(propagateEntities(result))
 
   return { ok: errors.length === 0, schema: propagated, errors, warnings }
 }

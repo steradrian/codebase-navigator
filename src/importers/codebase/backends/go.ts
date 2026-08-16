@@ -10,6 +10,7 @@
 
 import { linkId } from '@/schema/migrate'
 import { propagateEntities } from '@/schema/entity/propagate'
+import { assignAltitudes } from '@/schema/altitude'
 import { norm } from '@/importers/codebase/resolve'
 import type { Link, LinkType, Node, Schema } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
@@ -463,7 +464,7 @@ function extract(files: Map<string, string>): BackendPluginResult {
     annotations: [],
   }
 
-  const withEntities = propagateEntities(schema)
+  const withEntities = assignAltitudes(propagateEntities(schema))
 
   return {
     ok: true,

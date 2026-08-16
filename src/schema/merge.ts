@@ -39,6 +39,7 @@ import type {
   Origin,
   Schema,
 } from '@/types'
+import { assignAltitudes } from '@/schema/altitude'
 
 // Fields that are structural identity — never merged, never tracked.
 const STRUCTURAL_NODE_FIELDS = new Set(['id', 'origin', 'manualOverrides'])
@@ -285,7 +286,12 @@ export function merge(existing: Schema, candidate: Schema): MergeResult {
     annotations: existing.annotations,
   }
 
-  return { schema: mergedSchema, conflicts }
+  // Altitude depends only on node type + isHub, both already resolved
+  // above, so recompute it here rather than leaving `meta.altitudeCoverage`
+  // describing the pre-merge node set. The zoom control gates on that
+  // count, and a stale one would offer tiers the merged graph no longer
+  // has (or hide tiers it just gained).
+  return { schema: assignAltitudes(mergedSchema), conflicts }
 }
 
 // ─── helpers ─────────────────────────────────────────────────

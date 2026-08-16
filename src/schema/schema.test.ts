@@ -239,9 +239,26 @@ describe('upgradeLoadedSchema', () => {
   it('returns the input unchanged when already on SCHEMA_VERSION with propagation done', () => {
     const current: Schema = {
       ...stored,
-      // v1.3: "fully current" now includes a populated `journeys`.
-      // Without it the upgrade must still run, or a schema stamped
-      // v1.3 by an earlier code path would never get its journeys.
+      // v1.3: "fully current" now includes a populated `journeys` and
+      // computed altitude coverage. Without either the upgrade must
+      // still run, or a schema stamped v1.3 by an earlier code path
+      // would never receive them.
+      journeys: [],
+      meta: {
+        ...stored.meta,
+        version: SCHEMA_VERSION,
+        lastPropagationAt: '2026-01-01T00:00:00Z',
+        altitudeCoverage: {
+          product: 1, domain: 0, behavior: 1, system: 0, implementation: 1, code: 0,
+        },
+      },
+    }
+    expect(upgradeLoadedSchema(current)).toBe(current)
+  })
+
+  it('upgrades a v1.3-stamped schema that is missing altitude coverage', () => {
+    const stamped: Schema = {
+      ...stored,
       journeys: [],
       meta: {
         ...stored.meta,
@@ -249,7 +266,7 @@ describe('upgradeLoadedSchema', () => {
         lastPropagationAt: '2026-01-01T00:00:00Z',
       },
     }
-    expect(upgradeLoadedSchema(current)).toBe(current)
+    expect(upgradeLoadedSchema(stamped).meta.altitudeCoverage).toBeDefined()
   })
 
   it('upgrades a v1.3-stamped schema that is missing journeys', () => {

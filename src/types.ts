@@ -45,6 +45,26 @@ export type PathCategory =
 
 export type AnnotationTarget = 'node' | 'link'
 
+/**
+ * Semantic-zoom tier (v1.3). Ordered coarse → fine; `ALTITUDE_ORDER`
+ * in `@/schema/altitude` is the canonical sequence.
+ *
+ * `product` and `domain` have no members among importer-produced
+ * nodes — real imports emit only api/database/component/hook/util-style
+ * types. Those two tiers are synthesised by the projection layer from
+ * `meta.name` and `meta.domains` rather than materialised into
+ * `schema.nodes`, which would otherwise require registering synthetic
+ * node types, re-synthesising them on every merge, and surfacing them
+ * as phantom entries in every diff.
+ */
+export type Altitude =
+  | 'product'
+  | 'domain'
+  | 'behavior'
+  | 'system'
+  | 'implementation'
+  | 'code'
+
 // ─── registries ──────────────────────────────────────────────
 
 export type NodeType = {
@@ -114,6 +134,14 @@ export type Node = {
    * decision.
    */
   isHub?: boolean
+
+  /**
+   * v1.3 — semantic-zoom tier. Computed by `assignAltitudes`, never a
+   * user decision by default, and recomputed on every import the same
+   * way `isHub` is. Listing 'altitude' in `manualOverrides` pins a
+   * hand-corrected value against recomputation.
+   */
+  altitude?: Altitude
 
   origin: Origin
   parent?: string | null
@@ -325,6 +353,24 @@ export type SchemaMeta = {
    * again after a schema load.
    */
   lastPropagationAt?: string
+
+  /**
+   * v1.3 — how many members each semantic-zoom tier has, computed by
+   * `assignAltitudes`. The UI reads this to disable empty tiers in the
+   * zoom control *before* rendering it. Without it the control would
+   * silently fall back to a neighbouring tier, asserting a granularity
+   * it is not actually showing.
+   */
+  altitudeCoverage?: Record<Altitude, number>
+
+  /**
+   * v1.3 — node `type` values that no altitude rule recognised and
+   * that fell back to `implementation`. `nodeTypes` is a user-extensible
+   * registry, so a project can introduce types the rules have never
+   * seen; recording them here keeps that visible instead of silently
+   * mis-tiering the graph. Sorted for determinism.
+   */
+  altitudeUnmappedTypes?: string[]
 }
 
 export type Schema = {

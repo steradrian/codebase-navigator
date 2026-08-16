@@ -18,6 +18,7 @@ import type {
 } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
 import { propagateEntities } from '@/schema/entity/propagate'
+import { assignAltitudes } from '@/schema/altitude'
 import { hasStaleAutoEntityTags, resetAutoEntityTags } from '@/schema/entity/catalog'
 
 /**
@@ -136,7 +137,7 @@ export function migrate(legacy: LegacySchema): Schema {
   // GE-115b — propagate entities across graph edges (no-op here since
   // this is a freshly migrated schema with no seeds, but keeps the call
   // site consistent with the downstream importers).
-  return propagateEntities(schema)
+  return assignAltitudes(propagateEntities(schema))
 }
 
 /**
@@ -164,7 +165,7 @@ export function upgradeLoadedSchema(schema: Schema): Schema {
   // most once per stuck graph; once cleared, the condition is false.
   if (hasStaleAutoEntityTags(schema)) {
     const cleaned = resetAutoEntityTags(schema)
-    return propagateEntities({
+    return assignAltitudes(propagateEntities({
       ...cleaned,
       // Must mirror the v1.3 journey backfill below: this branch also
       // stamps the current version, and the idempotency guard would
@@ -172,10 +173,15 @@ export function upgradeLoadedSchema(schema: Schema): Schema {
       // journeys.
       journeys: cleaned.journeys ?? cleaned.paths.map(journeyFromPath),
       meta: { ...cleaned.meta, version: SCHEMA_VERSION },
-    })
+    }))
   }
 
-  if (schema.meta.version === SCHEMA_VERSION && schema.meta.lastPropagationAt && schema.journeys) {
+  if (
+    schema.meta.version === SCHEMA_VERSION &&
+    schema.meta.lastPropagationAt &&
+    schema.journeys &&
+    schema.meta.altitudeCoverage
+  ) {
     return schema
   }
   // Version bump happens unconditionally when below current; propagation
@@ -190,5 +196,5 @@ export function upgradeLoadedSchema(schema: Schema): Schema {
     journeys: schema.journeys ?? schema.paths.map(journeyFromPath),
     meta: { ...schema.meta, version: SCHEMA_VERSION },
   }
-  return propagateEntities(bumped)
+  return assignAltitudes(propagateEntities(bumped))
 }

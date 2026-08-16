@@ -39,6 +39,7 @@ import type {
 import { SCHEMA_VERSION } from '@/types'
 import { CODE_EXT, extractImports, norm, resolveImport } from '@/importers/codebase/resolve'
 import { propagateEntities } from '@/schema/entity/propagate'
+import { assignAltitudes } from '@/schema/altitude'
 
 export type CodebaseParseWarning =
   | { kind: 'unresolved_import'; from: string; spec: string }
@@ -274,7 +275,7 @@ export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
   // since codebase import alone has no entity seeds). Real
   // propagation happens after the linker runs against an existing
   // graph that already has API ops tagged from GE-115.
-  const withEntities = propagateEntities(schema)
+  const withEntities = assignAltitudes(propagateEntities(schema))
 
   return {
     ok: true,
