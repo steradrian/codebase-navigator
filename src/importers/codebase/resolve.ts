@@ -28,7 +28,7 @@ export function normalizePath(p: string): string {
 
 /** Yield the first file-set key that matches `base` with TS/JS
  *  extension elision or directory/index fallback. */
-export function* trySuffixes(base: string, fileSet: Set<string>): Generator<string> {
+export function* trySuffixes(base: string, fileSet: ReadonlySet<string>): Generator<string> {
   if (fileSet.has(base)) { yield base; return }
   for (const ext of ['.ts', '.tsx', '.js', '.jsx', '.mjs']) {
     if (fileSet.has(base + ext)) { yield base + ext; return }
@@ -47,7 +47,9 @@ export function* trySuffixes(base: string, fileSet: Set<string>): Generator<stri
 export function resolveImport(
   spec: string,
   fromPath: string,
-  fileSet: Set<string>,
+  // Read-only: this function never mutates the set, and widening the
+  // parameter lets callers pass an immutable view without casting.
+  fileSet: ReadonlySet<string>,
 ): string | null {
   if (!spec.startsWith('.') && !spec.startsWith('/') && !spec.startsWith('@/')) {
     return null

@@ -37,6 +37,7 @@ import type {
   Schema,
 } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
+import { extractTests, isTestFile } from '@/importers/codebase/tests'
 import { CODE_EXT, extractImports, norm, resolveImport } from '@/importers/codebase/resolve'
 import { propagateEntities } from '@/schema/entity/propagate'
 import { assignAltitudes } from '@/schema/altitude'
@@ -73,17 +74,20 @@ const DEFAULT_NODE_TYPES: Record<string, { color: string; label: string; glow?: 
   util: { color: '#90a4ae', label: 'Util', glow: 0.06 },
   ui: { color: '#ffd740', label: 'UI', glow: 0.1 }, // fallback for legacy data
   external: { color: '#78909c', label: 'External', glow: 0.06 },
+  test: { color: '#7fd1ae', label: 'Test', glow: 0.08 },
 }
 
 const DEFAULT_LINK_TYPES: Record<string, LinkType> = {
   data_flow: { color: '#1a4a6c', label: 'Data Flow', animated: true },
   dependency: { color: '#3a2a5c', label: 'Dependency', dashed: true },
   triggers: { color: '#4a3a1c', label: 'Triggers', animated: true },
+  tests: { color: '#1f4a3a', label: 'Tests', dashed: true },
 }
 
 const SKIP_FILE_PATTERNS = [
-  /\.test\./,
-  /\.spec\./,
+  // `.test.` / `.spec.` are deliberately NOT here — they are routed to
+  // the test extractor instead of dropped. Stories remain excluded:
+  // they are a rendering harness, not a statement about behaviour.
   /\.stories\./,
   /\.d\.ts$/,
   /\.config\.[cm]?[jt]s$/,
@@ -178,8 +182,11 @@ export function nodeIdForPath(relPath: string): string {
 export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
   const warnings: CodebaseParseWarning[] = []
 
-  // Normalize keys + filter to code files that aren't skipped.
+  // Normalize keys, then split into product code and tests. Tests are
+  // no longer discarded: they are the most reliable statement a codebase
+  // makes about its own behaviour, and the Tests lens needs them.
   const effective = new Map<string, string>()
+  const testFiles = new Map<string, string>()
   let filesConsidered = 0
   for (const [k, v] of files) {
     filesConsidered++
@@ -192,6 +199,10 @@ export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
       warnings.push({ kind: 'skipped_file', path: p, reason: 'test / config / build artifact' })
       continue
     }
+    if (isTestFile(p)) {
+      testFiles.set(p, v)
+      continue
+    }
     effective.set(p, v)
   }
 
@@ -202,11 +213,16 @@ export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
   const seenLinks = new Set<string>()
 
   // Pass 1: node per file.
+  // Tests are resolved first so each product file can be created already
+  // carrying the evidence its tests provide.
+  const testResult = extractTests(testFiles, fileSet)
+
   for (const [path] of effective) {
     const classified = classify(path)
     const id = nodeIdForPath(path)
     if (seenNodes.has(id)) continue
     seenNodes.add(id)
+    const testEvidence = testResult.evidenceBySubject.get(path)
     nodes.push({
       id,
       name: classified.name,
@@ -214,7 +230,19 @@ export function parseCodebase(files: Map<string, string>): CodebaseParseResult {
       description: path,
       origin: 'auto:codebase',
       group: classified.type === 'api' ? 'api' : 'ui',
+      evidence: testEvidence,
     })
+  }
+
+  for (const node of testResult.nodes) {
+    if (seenNodes.has(node.id)) continue
+    seenNodes.add(node.id)
+    nodes.push(node)
+  }
+  for (const link of testResult.links) {
+    if (seenLinks.has(link.id)) continue
+    seenLinks.add(link.id)
+    links.push(link)
   }
 
   // Pass 2: imports → dependency links.

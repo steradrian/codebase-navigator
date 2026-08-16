@@ -90,6 +90,13 @@ export type NodeMetadata = {
    */
   outcomeKind?: OutcomeKind
 
+  /**
+   * v1.3 — set on nodes of type 'test'. The scenario names declared in
+   * the file, so the Tests lens can show what is actually covered
+   * rather than only how many files exist.
+   */
+  testCases?: string[]
+
   lastModified?: string // ISO 8601
   health?: Health
   team?: string

@@ -90,10 +90,9 @@ describe('parseCodebase — import resolution', () => {
 })
 
 describe('parseCodebase — skipping', () => {
-  it('skips test, story, d.ts, config, and node_modules files', () => {
+  it('skips story, d.ts, config, and node_modules files', () => {
     const files = new Map([
       ['app/page.tsx', ''],
-      ['app/page.test.tsx', ''],
       ['components/Button.stories.tsx', ''],
       ['types.d.ts', ''],
       ['next.config.js', ''],
@@ -101,7 +100,27 @@ describe('parseCodebase — skipping', () => {
     ])
     const result = parseCodebase(files)
     expect(result.schema!.nodes).toHaveLength(1) // only app/page.tsx
-    expect(result.warnings.filter((w) => w.kind === 'skipped_file').length).toBeGreaterThanOrEqual(5)
+    expect(result.warnings.filter((w) => w.kind === 'skipped_file').length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('extracts test files rather than skipping them', () => {
+    // Previously `.test.` matched SKIP_FILE_PATTERNS and was discarded,
+    // leaving the Tests lens with nothing and the `test` evidence source
+    // with no producer.
+    const files = new Map([
+      ['app/page.tsx', ''],
+      ['app/page.test.tsx', `it('renders', () => {})`],
+    ])
+    const result = parseCodebase(files)
+    const types = result.schema!.nodes.map((n) => n.type).sort()
+    expect(types).toContain('test')
+    expect(result.warnings.some((w) => w.kind === 'skipped_file' && w.path.includes('.test.'))).toBe(false)
+  })
+
+  it('still excludes stories, which are a rendering harness not a behaviour claim', () => {
+    const files = new Map([['components/Button.stories.tsx', `it('x', () => {})`]])
+    const result = parseCodebase(files)
+    expect(result.schema!.nodes).toHaveLength(0)
   })
 })
 

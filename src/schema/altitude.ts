@@ -71,6 +71,8 @@ const ALTITUDE_BY_NODE_TYPE: Readonly<Record<string, Altitude>> = {
   component: 'implementation',
   util: 'implementation',
   ui: 'implementation',
+  // A test sits at the level of the thing it verifies.
+  test: 'implementation',
 }
 
 /**
