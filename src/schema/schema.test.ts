@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { LegacySchema, Schema } from '@/types'
+import type { GuidedPath, Journey, LegacySchema, Schema } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
-import { linkId, migrate, upgradeLoadedSchema } from '@/schema/migrate'
+import { journeyFromPath, linkId, migrate, upgradeLoadedSchema } from '@/schema/migrate'
 import { validate } from '@/schema/validate'
 
 // ─── fixtures ────────────────────────────────────────────────
@@ -239,6 +239,10 @@ describe('upgradeLoadedSchema', () => {
   it('returns the input unchanged when already on SCHEMA_VERSION with propagation done', () => {
     const current: Schema = {
       ...stored,
+      // v1.3: "fully current" now includes a populated `journeys`.
+      // Without it the upgrade must still run, or a schema stamped
+      // v1.3 by an earlier code path would never get its journeys.
+      journeys: [],
       meta: {
         ...stored.meta,
         version: SCHEMA_VERSION,
@@ -246,6 +250,19 @@ describe('upgradeLoadedSchema', () => {
       },
     }
     expect(upgradeLoadedSchema(current)).toBe(current)
+  })
+
+  it('upgrades a v1.3-stamped schema that is missing journeys', () => {
+    const stamped: Schema = {
+      ...stored,
+      meta: {
+        ...stored.meta,
+        version: SCHEMA_VERSION,
+        lastPropagationAt: '2026-01-01T00:00:00Z',
+      },
+    }
+    expect(stamped.journeys).toBeUndefined()
+    expect(upgradeLoadedSchema(stamped).journeys).toEqual([])
   })
 
   it('cleans up stale auto entity tags from the old extractor on load', () => {
@@ -287,5 +304,261 @@ describe('upgradeLoadedSchema', () => {
     }
     const upgraded = upgradeLoadedSchema(withManual)
     expect(upgraded.nodes.find((n) => n.id === 'n1')?.entity).toBe('custom-entity')
+  })
+})
+
+// ─── v1.3: evidence + branching journeys ─────────────────────
+
+describe('journeyFromPath (v1.3)', () => {
+  const path: GuidedPath = {
+    id: 'checkout',
+    name: 'Checkout',
+    description: 'User pays',
+    color: '#fff',
+    category: 'user_journey',
+    steps: [
+      { nodeId: 'a', annotation: 'starts', duration: '~200ms' },
+      { nodeId: 'b', annotation: 'validates' },
+      { nodeId: 'c', annotation: 'done' },
+    ],
+  }
+
+  it('emits one step per path step, joined by n-1 transitions', () => {
+    const j = journeyFromPath(path)
+    expect(j.steps).toHaveLength(3)
+    expect(j.transitions).toHaveLength(2)
+    expect(j.transitions.map((t) => [t.from, t.to])).toEqual([
+      ['checkout__s0', 'checkout__s1'],
+      ['checkout__s1', 'checkout__s2'],
+    ])
+  })
+
+  it('is deterministic — repeated conversion is byte-stable', () => {
+    expect(journeyFromPath(path)).toEqual(journeyFromPath(path))
+  })
+
+  it('preserves annotations, duration, and node links', () => {
+    const j = journeyFromPath(path)
+    expect(j.steps[0]).toMatchObject({ nodeId: 'a', annotation: 'starts', duration: '~200ms' })
+  })
+
+  it('does not fabricate an outcome for the final step', () => {
+    const j = journeyFromPath(path)
+    expect(j.steps.every((s) => s.kind === 'action')).toBe(true)
+    expect(j.steps.every((s) => s.outcome === undefined)).toBe(true)
+  })
+
+  it('marks the first step as the entry point', () => {
+    expect(journeyFromPath(path).entryStepIds).toEqual(['checkout__s0'])
+  })
+
+  it('handles a single-step path without emitting transitions', () => {
+    const single = journeyFromPath({ ...path, steps: [{ nodeId: 'a', annotation: 'only' }] })
+    expect(single.steps).toHaveLength(1)
+    expect(single.transitions).toEqual([])
+  })
+
+  it('handles an empty path without producing a phantom entry step', () => {
+    const empty = journeyFromPath({ ...path, steps: [] })
+    expect(empty.steps).toEqual([])
+    expect(empty.transitions).toEqual([])
+    expect(empty.entryStepIds).toEqual([])
+  })
+})
+
+describe('upgradeLoadedSchema — journey backfill (v1.3)', () => {
+  const base: Schema = {
+    meta: { name: 'J', version: '1.2' as typeof SCHEMA_VERSION },
+    nodeTypes: { service: { color: '#abc', label: 'S' } },
+    linkTypes: {},
+    nodes: [{ id: 'a', name: 'A', type: 'service', description: '', origin: 'manual' }],
+    links: [],
+    paths: [
+      { id: 'p1', name: 'P1', description: '', color: '#fff', steps: [{ nodeId: 'a', annotation: 'x' }] },
+    ],
+    annotations: [],
+  }
+
+  it('mirrors linear paths into journeys', () => {
+    const up = upgradeLoadedSchema(base)
+    expect(up.journeys).toHaveLength(1)
+    expect(up.journeys?.[0].id).toBe('p1')
+  })
+
+  it('leaves the deprecated paths array intact for existing consumers', () => {
+    expect(upgradeLoadedSchema(base).paths).toEqual(base.paths)
+  })
+
+  it('does not clobber hand-authored journeys', () => {
+    const authored: Journey = {
+      id: 'hand',
+      name: 'Hand-authored',
+      description: '',
+      color: '#fff',
+      steps: [{ id: 's', name: 'S', annotation: '', kind: 'action' }],
+      transitions: [],
+    }
+    const up = upgradeLoadedSchema({ ...base, journeys: [authored] })
+    expect(up.journeys).toEqual([authored])
+  })
+})
+
+describe('validate — journeys and evidence (v1.3)', () => {
+  const base: Schema = {
+    meta: { name: 'V', version: SCHEMA_VERSION },
+    nodeTypes: { service: { color: '#abc', label: 'S' } },
+    linkTypes: {},
+    nodes: [{ id: 'a', name: 'A', type: 'service', description: '', origin: 'manual' }],
+    links: [],
+    paths: [],
+    journeys: [],
+    annotations: [],
+  }
+
+  const journey = (over: Partial<Journey>): Journey => ({
+    id: 'j',
+    name: 'J',
+    description: '',
+    color: '#fff',
+    steps: [],
+    transitions: [],
+    ...over,
+  })
+
+  it('accepts a well-formed branching journey', () => {
+    const j = journey({
+      steps: [
+        { id: 's1', name: 'Submit', annotation: '', kind: 'action', nodeId: 'a' },
+        { id: 's2', name: 'Valid?', annotation: '', kind: 'condition' },
+        { id: 'ok', name: 'Done', annotation: '', kind: 'outcome', outcome: 'success' },
+        { id: 'bad', name: 'Invalid', annotation: '', kind: 'outcome', outcome: 'validation_error' },
+      ],
+      transitions: [
+        { id: 't1', from: 's1', to: 's2' },
+        { id: 't2', from: 's2', to: 'ok', condition: 'valid' },
+        { id: 't3', from: 's2', to: 'bad', condition: 'invalid' },
+      ],
+      entryStepIds: ['s1'],
+    })
+    expect(validate({ ...base, journeys: [j] }).ok).toBe(true)
+  })
+
+  it('accepts a transition that rejoins and one that loops back', () => {
+    const j = journey({
+      steps: [
+        { id: 's1', name: 'Try', annotation: '', kind: 'action' },
+        { id: 's2', name: 'Failed?', annotation: '', kind: 'condition' },
+        { id: 'ok', name: 'Done', annotation: '', kind: 'outcome', outcome: 'success' },
+      ],
+      transitions: [
+        { id: 't1', from: 's1', to: 's2' },
+        { id: 't2', from: 's2', to: 's1', condition: 'retry' },
+        { id: 't3', from: 's2', to: 'ok' },
+      ],
+    })
+    expect(validate({ ...base, journeys: [j] }).ok).toBe(true)
+  })
+
+  it('rejects duplicate journey ids', () => {
+    const r = validate({ ...base, journeys: [journey({}), journey({})] })
+    expect(r.errors).toContainEqual({ kind: 'duplicate_journey_id', id: 'j' })
+  })
+
+  it('rejects duplicate step ids within a journey', () => {
+    const j = journey({
+      steps: [
+        { id: 'dup', name: 'A', annotation: '', kind: 'action' },
+        { id: 'dup', name: 'B', annotation: '', kind: 'action' },
+      ],
+    })
+    const r = validate({ ...base, journeys: [j] })
+    expect(r.errors).toContainEqual({ kind: 'journey_duplicate_step_id', journeyId: 'j', stepId: 'dup' })
+  })
+
+  it('rejects a step pointing at a node that does not exist', () => {
+    const j = journey({ steps: [{ id: 's', name: 'S', annotation: '', kind: 'action', nodeId: 'ghost' }] })
+    const r = validate({ ...base, journeys: [j] })
+    expect(r.errors).toContainEqual({
+      kind: 'journey_step_missing_node', journeyId: 'j', stepId: 's', nodeId: 'ghost',
+    })
+  })
+
+  it('rejects a transition referencing an unknown step', () => {
+    const j = journey({
+      steps: [{ id: 's1', name: 'S', annotation: '', kind: 'action' }],
+      transitions: [{ id: 't1', from: 's1', to: 'ghost' }],
+    })
+    const r = validate({ ...base, journeys: [j] })
+    expect(r.errors).toContainEqual({
+      kind: 'journey_transition_missing_step', journeyId: 'j', transitionId: 't1', stepId: 'ghost',
+    })
+  })
+
+  it('rejects an entry step that does not exist', () => {
+    const j = journey({ entryStepIds: ['ghost'] })
+    const r = validate({ ...base, journeys: [j] })
+    expect(r.errors).toContainEqual({ kind: 'journey_entry_step_missing', journeyId: 'j', stepId: 'ghost' })
+  })
+
+  it('rejects an outcome on a non-outcome step', () => {
+    const j = journey({
+      steps: [{ id: 's', name: 'S', annotation: '', kind: 'action', outcome: 'success' }],
+    })
+    const r = validate({ ...base, journeys: [j] })
+    expect(r.errors).toContainEqual({
+      kind: 'journey_outcome_on_non_outcome_step', journeyId: 'j', stepId: 's',
+    })
+  })
+
+  it('rejects an outcome step with no outcome kind', () => {
+    const j = journey({ steps: [{ id: 's', name: 'S', annotation: '', kind: 'outcome' }] })
+    const r = validate({ ...base, journeys: [j] })
+    expect(r.errors).toContainEqual({
+      kind: 'journey_outcome_step_missing_outcome', journeyId: 'j', stepId: 's',
+    })
+  })
+
+  it('treats absent confidence as unscored, not invalid', () => {
+    const nodes = [{ ...base.nodes[0], evidence: [{ source: 'static_analysis' as const }] }]
+    expect(validate({ ...base, nodes }).ok).toBe(true)
+  })
+
+  it('accepts confidence at both bounds', () => {
+    const nodes = [{
+      ...base.nodes[0],
+      evidence: [
+        { source: 'human' as const, confidence: 0 },
+        { source: 'ai_inference' as const, confidence: 1 },
+      ],
+    }]
+    expect(validate({ ...base, nodes }).ok).toBe(true)
+  })
+
+  it('rejects out-of-range confidence on a node', () => {
+    const nodes = [{ ...base.nodes[0], evidence: [{ source: 'ai_inference' as const, confidence: 1.4 }] }]
+    const r = validate({ ...base, nodes })
+    expect(r.errors).toContainEqual({
+      kind: 'evidence_confidence_out_of_range', entityType: 'node', entityId: 'a', confidence: 1.4,
+    })
+  })
+
+  it('rejects NaN confidence', () => {
+    const nodes = [{ ...base.nodes[0], evidence: [{ source: 'runtime' as const, confidence: NaN }] }]
+    expect(validate({ ...base, nodes }).ok).toBe(false)
+  })
+
+  it('rejects out-of-range confidence on a journey transition', () => {
+    const j = journey({
+      steps: [
+        { id: 's1', name: 'A', annotation: '', kind: 'action' },
+        { id: 's2', name: 'B', annotation: '', kind: 'action' },
+      ],
+      transitions: [{ id: 't1', from: 's1', to: 's2', evidence: [{ source: 'test', confidence: -0.2 }] }],
+    })
+    const r = validate({ ...base, journeys: [j] })
+    expect(r.errors).toContainEqual({
+      kind: 'evidence_confidence_out_of_range',
+      entityType: 'journey_transition', entityId: 't1', confidence: -0.2,
+    })
   })
 })

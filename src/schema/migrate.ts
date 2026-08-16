@@ -8,6 +8,10 @@
 // ─────────────────────────────────────────────────────────────────
 
 import type {
+  GuidedPath,
+  Journey,
+  JourneyStep,
+  JourneyTransition,
   LegacySchema,
   LinkType,
   Schema,
@@ -35,6 +39,48 @@ const DEFAULT_LINK_TYPES: Record<string, LinkType> = {
  */
 export function linkId(source: string, target: string, type?: string): string {
   return `${source}__${type ?? 'none'}__${target}`
+}
+
+/**
+ * Lift a linear `GuidedPath` into a v1.3 `Journey`.
+ *
+ * A linear path is the degenerate case of a journey: N steps joined by
+ * N-1 unconditional transitions, no branches. Ids are derived from the
+ * path id and step index so repeated conversions are byte-stable — the
+ * same requirement that makes `linkId()` deterministic.
+ *
+ * Every step is emitted as `kind: 'action'`, including the last one.
+ * Marking the final step as an `outcome` would require inventing an
+ * `OutcomeKind` the source data never stated, and a fabricated outcome
+ * is worse than an absent one for a tool whose premise is that
+ * inference stays distinguishable from fact.
+ */
+export function journeyFromPath(path: GuidedPath): Journey {
+  const steps: JourneyStep[] = path.steps.map((s, i) => ({
+    id: `${path.id}__s${i}`,
+    name: s.nodeId,
+    annotation: s.annotation,
+    kind: 'action' as const,
+    nodeId: s.nodeId,
+    duration: s.duration,
+  }))
+
+  const transitions: JourneyTransition[] = steps.slice(0, -1).map((s, i) => ({
+    id: `${path.id}__t${i}`,
+    from: s.id,
+    to: steps[i + 1].id,
+  }))
+
+  return {
+    id: path.id,
+    name: path.name,
+    description: path.description,
+    color: path.color,
+    category: path.category,
+    entryStepIds: steps.length > 0 ? [steps[0].id] : [],
+    steps,
+    transitions,
+  }
 }
 
 /**
@@ -84,6 +130,7 @@ export function migrate(legacy: LegacySchema): Schema {
     nodes,
     links,
     paths,
+    journeys: paths.map(journeyFromPath),
     annotations: [],
   }
   // GE-115b — propagate entities across graph edges (no-op here since
@@ -119,11 +166,16 @@ export function upgradeLoadedSchema(schema: Schema): Schema {
     const cleaned = resetAutoEntityTags(schema)
     return propagateEntities({
       ...cleaned,
+      // Must mirror the v1.3 journey backfill below: this branch also
+      // stamps the current version, and the idempotency guard would
+      // then skip the upgrade forever, stranding the schema without
+      // journeys.
+      journeys: cleaned.journeys ?? cleaned.paths.map(journeyFromPath),
       meta: { ...cleaned.meta, version: SCHEMA_VERSION },
     })
   }
 
-  if (schema.meta.version === SCHEMA_VERSION && schema.meta.lastPropagationAt) {
+  if (schema.meta.version === SCHEMA_VERSION && schema.meta.lastPropagationAt && schema.journeys) {
     return schema
   }
   // Version bump happens unconditionally when below current; propagation
@@ -131,6 +183,11 @@ export function upgradeLoadedSchema(schema: Schema): Schema {
   // absent) OR after a version bump to pick up new GE-115b semantics.
   const bumped: Schema = {
     ...schema,
+    // v1.2 → v1.3: mirror linear paths into branching journeys. Only
+    // when `journeys` is absent — a schema that already carries
+    // hand-authored journeys must not have them clobbered by the
+    // lossy linear projections of the same flows.
+    journeys: schema.journeys ?? schema.paths.map(journeyFromPath),
     meta: { ...schema.meta, version: SCHEMA_VERSION },
   }
   return propagateEntities(bumped)

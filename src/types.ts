@@ -12,12 +12,22 @@
 //   - `manualOverrides` reserved for GE-007 (per-field override tracking
 //     on auto-generated entities; consumers set this via the merge engine)
 //
+// Changes in v1.3:
+//   - `Evidence` — why we believe a claim, kept deliberately separate
+//     from `Origin` (which importer produced the entry). Attached to
+//     nodes, links, journey steps, and transitions.
+//   - `Journey` — branching flows modelled as steps + transitions
+//     (a state machine, not a tree) so branches can rejoin and retry
+//     loops are expressible. `GuidedPath` becomes the linear special
+//     case and is deprecated; `upgradeLoadedSchema` mirrors every path
+//     into `journeys` at the load boundary.
+//
 // Closed unions (e.g., Origin, Health) are intentional — a new value
 // belongs here, not silently in consumer code. Open registries (nodeTypes,
 // linkTypes) stay user-extensible since they are project-specific.
 // ─────────────────────────────────────────────────────────────────
 
-export const SCHEMA_VERSION = '1.2' as const
+export const SCHEMA_VERSION = '1.3' as const
 export type SchemaVersion = typeof SCHEMA_VERSION
 
 // ─── closed unions ────────────────────────────────────────────
@@ -111,6 +121,9 @@ export type Node = {
   collapsed?: boolean
   metadata?: NodeMetadata
 
+  /** v1.3 — why we believe the claims made about this node. */
+  evidence?: Evidence[]
+
   // GE-007: set by the merge engine when a manual edit overrides
   // an auto-generated field. Listed fields are preserved across re-imports.
   manualOverrides?: string[]
@@ -130,6 +143,9 @@ export type Link = {
   weight?: number
   metadata?: LinkMetadata
   manualOverrides?: string[]
+
+  /** v1.3 — why we believe this relationship exists. */
+  evidence?: Evidence[]
 }
 
 // ─── paths ───────────────────────────────────────────────────
@@ -147,6 +163,127 @@ export type GuidedPath = {
   color: string
   category?: PathCategory
   steps: PathStep[]
+}
+
+// ─── evidence & provenance (v1.3) ────────────────────────────
+
+/**
+ * What kind of proof backs a claim.
+ *
+ * Deliberately distinct from `Origin`. Origin records *how an entry
+ * entered the system* (which importer produced it). Evidence records
+ * *why we believe a specific claim about it*. The two are independent:
+ * a manual-origin node can carry an ai_inference rationale, and an
+ * auto:codebase link can carry human confirmation. Collapsing them
+ * would make "a human drew this" indistinguishable from "a human
+ * verified this" — the exact confusion this model exists to prevent.
+ */
+export type EvidenceSource =
+  | 'static_analysis'
+  | 'test'
+  | 'runtime'
+  | 'documentation'
+  | 'git'
+  | 'human'
+  | 'ai_inference'
+
+export type Evidence = {
+  source: EvidenceSource
+
+  /**
+   * 0..1. Absent means "unscored", which is NOT the same as 0 —
+   * consumers must not default it to zero, or unscored code-derived
+   * facts would rank below low-confidence guesses.
+   */
+  confidence?: number
+
+  file?: string
+  line?: number
+  commit?: string
+  url?: string
+
+  /**
+   * Free-text justification. Consumers should treat this as required
+   * reading for `ai_inference` — an inference the reader cannot audit
+   * is indistinguishable from a fabrication.
+   */
+  note?: string
+
+  /** ISO 8601. When this evidence was last checked against reality. */
+  verifiedAt?: string
+}
+
+// ─── journeys (v1.3) ─────────────────────────────────────────
+
+export type JourneyStepKind = 'action' | 'condition' | 'state' | 'outcome'
+
+/**
+ * The terminal states an action can reach. Closed on purpose: an
+ * unrecognised outcome is almost always a modelling mistake, and
+ * "show me every possible outcome" is only answerable if the
+ * vocabulary is bounded.
+ */
+export type OutcomeKind =
+  | 'success'
+  | 'validation_error'
+  | 'permission_denied'
+  | 'not_found'
+  | 'conflict'
+  | 'rate_limited'
+  | 'timeout'
+  | 'server_error'
+  | 'cancelled'
+  | 'partial'
+
+export type JourneyStep = {
+  id: string
+  name: string
+  annotation: string
+  kind: JourneyStepKind
+
+  /**
+   * Implementation link. Optional because a step can be pure UX
+   * ("user reads the confirmation email") with no single owning node.
+   */
+  nodeId?: string
+
+  /** Only meaningful when `kind === 'outcome'`. */
+  outcome?: OutcomeKind
+
+  duration?: string
+  evidence?: Evidence[]
+}
+
+/**
+ * A directed edge between steps. Modelled as a flat list rather than
+ * nested children so journeys can express branches that rejoin and
+ * retry loops — neither is representable as a tree.
+ */
+export type JourneyTransition = {
+  id: string
+  from: string
+  to: string
+  label?: string
+
+  /** Human-readable branch condition, e.g. "credentials invalid". */
+  condition?: string
+
+  evidence?: Evidence[]
+}
+
+export type Journey = {
+  id: string
+  name: string
+  description: string
+  color: string
+  category?: PathCategory
+  actors?: string[]
+
+  /** Step ids a user can enter this journey at. Defaults to steps with no inbound transition. */
+  entryStepIds?: string[]
+
+  steps: JourneyStep[]
+  transitions: JourneyTransition[]
 }
 
 // ─── annotations (reserved, GE-023) ──────────────────────────
@@ -196,7 +333,25 @@ export type Schema = {
   linkTypes: Record<string, LinkType>
   nodes: Node[]
   links: Link[]
+
+  /**
+   * Linear guided paths. Superseded by `journeys` in v1.3 and slated
+   * for removal once the remaining consumers (diff, merge, editor,
+   * OpenAPI importer) migrate. `upgradeLoadedSchema` mirrors every
+   * path into `journeys`, so new code should read `journeys` only.
+   *
+   * @deprecated since v1.3 — read `journeys` instead.
+   */
   paths: GuidedPath[]
+
+  /**
+   * Branching journeys (v1.3). Optional rather than required so the
+   * ~15 existing Schema literals in tests and importers stay valid;
+   * `upgradeLoadedSchema` normalises it to a populated array at the
+   * load boundary, so runtime consumers can rely on it being present.
+   */
+  journeys?: Journey[]
+
   annotations: Annotation[]
 }
 
@@ -216,6 +371,21 @@ export type ValidationError =
   | { kind: 'parent_child_inconsistent'; parentId: string; childId: string; reason: string }
   | { kind: 'path_step_missing_node'; pathId: string; stepIndex: number; nodeId: string }
   | { kind: 'meta_missing_field'; field: string }
+  // v1.3 — journeys
+  | { kind: 'duplicate_journey_id'; id: string }
+  | { kind: 'journey_duplicate_step_id'; journeyId: string; stepId: string }
+  | { kind: 'journey_step_missing_node'; journeyId: string; stepId: string; nodeId: string }
+  | { kind: 'journey_transition_missing_step'; journeyId: string; transitionId: string; stepId: string }
+  | { kind: 'journey_entry_step_missing'; journeyId: string; stepId: string }
+  | { kind: 'journey_outcome_on_non_outcome_step'; journeyId: string; stepId: string }
+  | { kind: 'journey_outcome_step_missing_outcome'; journeyId: string; stepId: string }
+  // v1.3 — evidence
+  | {
+      kind: 'evidence_confidence_out_of_range'
+      entityType: 'node' | 'link' | 'journey_step' | 'journey_transition'
+      entityId: string
+      confidence: number
+    }
 
 export type ValidationResult = {
   ok: boolean

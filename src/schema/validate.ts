@@ -11,7 +11,7 @@
 // schema, every other module can trust the shape.
 // ─────────────────────────────────────────────────────────────────
 
-import type { Schema, ValidationError, ValidationResult } from '@/types'
+import type { Evidence, Schema, ValidationError, ValidationResult } from '@/types'
 
 export function validate(schema: Schema): ValidationResult {
   const errors: ValidationError[] = []
@@ -115,5 +115,104 @@ export function validate(schema: Schema): ValidationResult {
     })
   }
 
+  // ── journeys (v1.3) ──
+  const journeyIds = new Set<string>()
+  for (const j of schema.journeys ?? []) {
+    if (journeyIds.has(j.id)) {
+      errors.push({ kind: 'duplicate_journey_id', id: j.id })
+      continue
+    }
+    journeyIds.add(j.id)
+
+    // Step ids must be unique *within* the journey — transitions
+    // address steps by bare id, so a duplicate makes every transition
+    // touching it ambiguous.
+    const stepIds = new Set<string>()
+    for (const step of j.steps) {
+      if (stepIds.has(step.id)) {
+        errors.push({ kind: 'journey_duplicate_step_id', journeyId: j.id, stepId: step.id })
+        continue
+      }
+      stepIds.add(step.id)
+
+      if (step.nodeId && !nodeIds.has(step.nodeId)) {
+        errors.push({
+          kind: 'journey_step_missing_node',
+          journeyId: j.id,
+          stepId: step.id,
+          nodeId: step.nodeId,
+        })
+      }
+
+      // `outcome` is only meaningful on outcome steps, and an outcome
+      // step without one is unanswerable for "show every outcome".
+      if (step.outcome && step.kind !== 'outcome') {
+        errors.push({ kind: 'journey_outcome_on_non_outcome_step', journeyId: j.id, stepId: step.id })
+      }
+      if (step.kind === 'outcome' && !step.outcome) {
+        errors.push({ kind: 'journey_outcome_step_missing_outcome', journeyId: j.id, stepId: step.id })
+      }
+
+      checkEvidence(step.evidence, 'journey_step', step.id, errors)
+    }
+
+    for (const t of j.transitions) {
+      if (!stepIds.has(t.from)) {
+        errors.push({
+          kind: 'journey_transition_missing_step',
+          journeyId: j.id,
+          transitionId: t.id,
+          stepId: t.from,
+        })
+      }
+      if (!stepIds.has(t.to)) {
+        errors.push({
+          kind: 'journey_transition_missing_step',
+          journeyId: j.id,
+          transitionId: t.id,
+          stepId: t.to,
+        })
+      }
+      checkEvidence(t.evidence, 'journey_transition', t.id, errors)
+    }
+
+    for (const entryId of j.entryStepIds ?? []) {
+      if (!stepIds.has(entryId)) {
+        errors.push({ kind: 'journey_entry_step_missing', journeyId: j.id, stepId: entryId })
+      }
+    }
+  }
+
+  // ── evidence confidence bounds (v1.3) ──
+  for (const n of schema.nodes) checkEvidence(n.evidence, 'node', n.id, errors)
+  for (const l of schema.links) checkEvidence(l.evidence, 'link', l.id, errors)
+
   return { ok: errors.length === 0, errors }
+}
+
+/**
+ * Confidence is a probability, and downstream ranking multiplies by it.
+ * An out-of-range value silently distorts every projection it touches,
+ * so it is rejected at the gate rather than clamped quietly.
+ *
+ * `undefined` confidence is legal and means "unscored" — deliberately
+ * distinct from 0, which means "we believe this is false".
+ */
+function checkEvidence(
+  evidence: Evidence[] | undefined,
+  entityType: 'node' | 'link' | 'journey_step' | 'journey_transition',
+  entityId: string,
+  errors: ValidationError[],
+): void {
+  for (const e of evidence ?? []) {
+    if (e.confidence === undefined) continue
+    if (!Number.isFinite(e.confidence) || e.confidence < 0 || e.confidence > 1) {
+      errors.push({
+        kind: 'evidence_confidence_out_of_range',
+        entityType,
+        entityId,
+        confidence: e.confidence,
+      })
+    }
+  }
 }

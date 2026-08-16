@@ -276,6 +276,12 @@ export function merge(existing: Schema, candidate: Schema): MergeResult {
     nodes: sortById(mergedNodes),
     links: sortById(finalLinks),
     paths: existing.paths,
+    // v1.3 — same rule as paths: journeys are human-authored semantic
+    // structure that importers never produce, so the existing side
+    // always wins. Omitting this would silently wipe every journey on
+    // each re-import, which is the failure mode the merge engine
+    // exists to prevent.
+    journeys: existing.journeys,
     annotations: existing.annotations,
   }
 

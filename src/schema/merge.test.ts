@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Link, Node, Origin, Schema } from '@/types'
+import type { Journey, Link, Node, Origin, Schema } from '@/types'
 import { SCHEMA_VERSION } from '@/types'
 import { merge } from '@/schema/merge'
 import { validate } from '@/schema/validate'
@@ -280,5 +280,34 @@ describe('merge — output shape & validator round-trip', () => {
 
     expect(JSON.stringify(existing)).toBe(existingSnapshot)
     expect(JSON.stringify(candidate)).toBe(candidateSnapshot)
+  })
+})
+
+// ─── v1.3: journeys survive re-import ────────────────────────
+
+describe('merge — journeys (v1.3)', () => {
+  it('preserves existing journeys through a merge', () => {
+    const journey: Journey = {
+      id: 'j1',
+      name: 'Deposit',
+      description: '',
+      color: '#fff',
+      steps: [{ id: 's1', name: 'Submit', annotation: '', kind: 'action' }],
+      transitions: [],
+    }
+    const existing: Schema = { ...emptySchema(['manual']), journeys: [journey] }
+    const candidate: Schema = emptySchema(['auto:openapi'])
+
+    expect(merge(existing, candidate).schema.journeys).toEqual([journey])
+  })
+
+  it('does not let an importer candidate clobber authored journeys', () => {
+    const authored: Journey = {
+      id: 'j1', name: 'Authored', description: '', color: '#fff', steps: [], transitions: [],
+    }
+    const existing: Schema = { ...emptySchema(['manual']), journeys: [authored] }
+    const candidate: Schema = { ...emptySchema(['auto:openapi']), journeys: [] }
+
+    expect(merge(existing, candidate).schema.journeys).toEqual([authored])
   })
 })
