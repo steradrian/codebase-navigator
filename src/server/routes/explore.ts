@@ -28,6 +28,7 @@ import { computeCoverage } from '../../schema/coverage'
 import { search } from '../../schema/search'
 import { assessTrail, forkTrail, type Trail, type TrailStep } from '../../schema/trail'
 import { summariseChange } from '../../schema/change'
+import { assessIndexing } from '../../schema/indexing'
 
 const LENSES = Object.keys(LENS_PROFILES) as Lens[]
 
@@ -191,6 +192,13 @@ export function registerExploreRoutes(app: Hono, db: Db): void {
     const after = index >= 0 && index < later.length - 1 ? later[index + 1].data : graph.data
 
     return c.json({ data: { id: row.id, ...summariseChange(row.data, after) } })
+  })
+
+  // ── indexing status ────────────────────────────────────────
+  app.get('/graphs/:graphId/indexing', async (c) => {
+    const schema = await loadSchema(db, c.req.param('graphId'))
+    if (!schema) return c.json({ error: { kind: 'not_found' } }, 404)
+    return c.json({ data: assessIndexing(schema) })
   })
 
   // ── trails: list ───────────────────────────────────────────
