@@ -58,6 +58,20 @@ const eq = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.strin
  * constructed schema, and neither `existing` nor `candidate` is
  * mutated.
  */
+/**
+ * Authored journeys from `existing`, plus derived journeys from
+ * `candidate`. An authored journey wins any id collision.
+ */
+function mergeJourneys(existing: Schema, candidate: Schema): Schema['journeys'] {
+  const authored = (existing.journeys ?? []).filter((j) => !j.origin || j.origin === 'manual')
+  const authoredIds = new Set(authored.map((j) => j.id))
+  const derived = (candidate.journeys ?? []).filter(
+    (j) => j.origin && j.origin !== 'manual' && !authoredIds.has(j.id),
+  )
+  const merged = [...authored, ...derived]
+  return merged.length > 0 ? merged : existing.journeys
+}
+
 export function merge(existing: Schema, candidate: Schema): MergeResult {
   const conflicts: MergeConflict[] = []
 
@@ -289,12 +303,14 @@ export function merge(existing: Schema, candidate: Schema): MergeResult {
     nodes: sortById(mergedNodes),
     links: sortById(finalLinks),
     paths: existing.paths,
-    // v1.3 — same rule as paths: journeys are human-authored semantic
-    // structure that importers never produce, so the existing side
-    // always wins. Omitting this would silently wipe every journey on
-    // each re-import, which is the failure mode the merge engine
-    // exists to prevent.
-    journeys: existing.journeys,
+    // v1.3 — journeys follow the same origin rule as nodes and links.
+    // Authored journeys are sacred and always survive. Derived ones are
+    // owned by the importer that produced them, so a re-import refreshes
+    // them rather than accumulating duplicates. Taking `existing`
+    // wholesale would strand derived journeys at their first version;
+    // taking `candidate` wholesale would delete everything a person
+    // wrote.
+    journeys: mergeJourneys(existing, candidate),
     annotations: existing.annotations,
   }
 

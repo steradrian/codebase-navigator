@@ -310,7 +310,50 @@ export type JourneyTransition = {
   /** Human-readable branch condition, e.g. "credentials invalid". */
   condition?: string
 
+  /** v1.3 — set when this branch is only taken under a given variation. */
+  variation?: JourneyVariation
+
   evidence?: Evidence[]
+}
+
+/**
+ * How much the model trusts a journey's shape.
+ *
+ * `inferred` is the honest default for anything derived mechanically:
+ * an operation and its declared responses tell us what CAN happen, not
+ * that a person ever confirmed this is how the product behaves.
+ */
+export type JourneyStatus =
+  | 'verified'
+  | 'inferred'
+  | 'partial'
+  | 'changed'
+  | 'stale'
+  | 'deprecated'
+
+/**
+ * A condition under which a journey behaves differently.
+ *
+ * The same button produces different routes depending on who is
+ * pressing it and what is switched on, so a journey that cannot express
+ * this describes only one of its branches.
+ */
+export type JourneyVariationKind =
+  | 'role'
+  | 'permission'
+  | 'feature_flag'
+  | 'subscription'
+  | 'data_state'
+  | 'authentication'
+  | 'device'
+  | 'region'
+  | 'prior_action'
+
+export type JourneyVariation = {
+  kind: JourneyVariationKind
+  /** e.g. "admin", "enterprise", "new-wallet". */
+  value: string
+  description?: string
 }
 
 export type Journey = {
@@ -320,6 +363,20 @@ export type Journey = {
   color: string
   category?: PathCategory
   actors?: string[]
+
+  /**
+   * v1.3 — where this journey came from. Authored journeys are
+   * 'manual'; anything an importer derived carries that importer's
+   * origin, which is what lets the merge engine refresh derived
+   * journeys without touching hand-written ones.
+   */
+  origin?: Origin
+
+  /** v1.3 — how much the shape is trusted. Absent means unassessed. */
+  status?: JourneyStatus
+
+  /** v1.3 — conditions under which this journey differs. */
+  variations?: JourneyVariation[]
 
   /** Step ids a user can enter this journey at. Defaults to steps with no inbound transition. */
   entryStepIds?: string[]
