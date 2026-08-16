@@ -40,6 +40,7 @@ import type {
   Schema,
 } from '@/types'
 import { assignAltitudes } from '@/schema/altitude'
+import { humanEvidenceOf } from '@/schema/verify'
 
 // Fields that are structural identity — never merged, never tracked.
 const STRUCTURAL_NODE_FIELDS = new Set(['id', 'origin', 'manualOverrides'])
@@ -166,6 +167,17 @@ export function merge(existing: Schema, candidate: Schema): MergeResult {
         ;(merged as Record<string, unknown>)[field] = existingVal
       }
       // Non-overridden field: candidate's value already sits in `merged` via {...cand}.
+    }
+
+    // Human verification survives re-import. An importer knows nothing
+    // about who confirmed what, so letting its evidence array replace
+    // the existing one would silently discard the most valuable
+    // knowledge in the system. Extractor-derived evidence is still taken
+    // from the candidate — only confirmations are carried forward.
+    const carriedHuman = humanEvidenceOf(existingNode)
+    if (carriedHuman.length > 0 && !overrides.has('evidence')) {
+      const fromCandidate = (merged.evidence ?? []).filter((e) => e.source !== 'human')
+      merged.evidence = [...fromCandidate, ...carriedHuman]
     }
 
     mergedNodes.push(merged)

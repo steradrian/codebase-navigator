@@ -102,7 +102,15 @@ const syntheticEntity = (
   // Synthesised aggregates describe a grouping, not a claim about the
   // code, so they are neither evidenced nor unresolved.
   resolution: 'resolved',
-  evidence: { strongestSource: null, confidence: null, aiInferred: false, count: 0 },
+  evidence: {
+    strongestSource: null,
+    confidence: null,
+    bySource: [],
+    aiInferred: false,
+    humanVerified: false,
+    conflict: null,
+    count: 0,
+  },
   isHub: false,
   whyRelevant,
   synthetic: true,

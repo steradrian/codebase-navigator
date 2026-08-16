@@ -42,15 +42,66 @@ export type RelationToFocus = 'self' | 'ancestor' | 'descendant' | 'peer'
  */
 export type Resolution = 'resolved' | 'partial' | 'unresolved'
 
+/**
+ * Sources that materially disagree about the same entity.
+ *
+ * Detected from stated confidence, which is the only disagreement the
+ * model can currently observe. Claim-level conflict — "code says retry
+ * is allowed, tests say it is disabled" — needs `Evidence` to carry the
+ * assertion it is making, and no extractor produces assertions yet. That
+ * remains an open gap rather than something quietly approximated here.
+ */
+export type EvidenceConflict = {
+  /** Sources involved, highest-trust first. */
+  sources: EvidenceSource[]
+  /** Difference between the highest and lowest stated confidence. */
+  spread: number
+}
+
+export type SourceConfidence = {
+  source: EvidenceSource
+  /** Highest confidence stated by this source; null when unscored. */
+  confidence: number | null
+  count: number
+}
+
 export type EvidenceSummary = {
   /** Highest-trust source backing this entity, or null when unevidenced. */
   strongestSource: EvidenceSource | null
-  /** Mean stated confidence; null when nothing carried a score. */
+
+  /**
+   * Confidence of the highest-trust source — NOT a mean.
+   *
+   * Averaging was the previous behaviour and it silently destroyed the
+   * signal the product depends on: a human-verified fact at 1.0 and an
+   * AI guess at 0.2 blended into an unremarkable 0.6, so a reader could
+   * not tell a well-evidenced entity from a contested one.
+   */
   confidence: number | null
+
+  /** What each source says, so the UI can show disagreement rather than a blend. */
+  bySource: SourceConfidence[]
+
   /** True when any contributing evidence was AI-inferred. */
   aiInferred: boolean
+
+  /** True when a human has confirmed this, which outranks any inference. */
+  humanVerified: boolean
+
+  /** Present when sources materially disagree. */
+  conflict: EvidenceConflict | null
+
   count: number
 }
+
+/**
+ * Confidence gap above which sources are treated as disagreeing.
+ *
+ * Set high enough that ordinary variation between a certain static fact
+ * and a slightly-hedged one does not read as a conflict, and low enough
+ * that a confident claim against a doubtful one does.
+ */
+export const CONFLICT_SPREAD_THRESHOLD = 0.4
 
 export type ProjectedEntity = {
   id: string
@@ -310,31 +361,70 @@ export const UNEVIDENCED_TRUST = 0.5
 
 export const summariseEvidence = (evidence: Evidence[] | undefined): EvidenceSummary => {
   if (!evidence || evidence.length === 0) {
-    return { strongestSource: null, confidence: null, aiInferred: false, count: 0 }
+    return {
+      strongestSource: null,
+      confidence: null,
+      bySource: [],
+      aiInferred: false,
+      humanVerified: false,
+      conflict: null,
+      count: 0,
+    }
   }
+
+  const perSource = new Map<EvidenceSource, { confidence: number | null; count: number }>()
   let strongest: EvidenceSource | null = null
   let strongestTrust = -1
-  let confidenceSum = 0
-  let confidenceCount = 0
+  let strongestConfidence: number | null = null
   let aiInferred = false
+  let humanVerified = false
 
   for (const e of evidence) {
     const trust = SOURCE_TRUST[e.source] ?? UNEVIDENCED_TRUST
     if (trust > strongestTrust) {
       strongestTrust = trust
       strongest = e.source
+      strongestConfidence = e.confidence ?? null
     }
     if (e.source === 'ai_inference') aiInferred = true
+    if (e.source === 'human') humanVerified = true
+
+    const entry = perSource.get(e.source) ?? { confidence: null, count: 0 }
+    entry.count += 1
     if (e.confidence !== undefined) {
-      confidenceSum += e.confidence
-      confidenceCount += 1
+      entry.confidence = entry.confidence === null
+        ? e.confidence
+        : Math.max(entry.confidence, e.confidence)
+    }
+    perSource.set(e.source, entry)
+  }
+
+  // Highest-trust source first, so the UI leads with the best-supported
+  // account rather than whichever happened to be recorded first.
+  const bySource: SourceConfidence[] = [...perSource.entries()]
+    .map(([source, v]) => ({ source, confidence: v.confidence, count: v.count }))
+    .sort((a, b) =>
+      (SOURCE_TRUST[b.source] ?? UNEVIDENCED_TRUST) - (SOURCE_TRUST[a.source] ?? UNEVIDENCED_TRUST) ||
+      a.source.localeCompare(b.source))
+
+  const scored = bySource.filter((s): s is SourceConfidence & { confidence: number } =>
+    s.confidence !== null)
+  let conflict: EvidenceConflict | null = null
+  if (scored.length >= 2) {
+    const values = scored.map((s) => s.confidence)
+    const spread = Math.max(...values) - Math.min(...values)
+    if (spread >= CONFLICT_SPREAD_THRESHOLD) {
+      conflict = { sources: scored.map((s) => s.source), spread }
     }
   }
 
   return {
     strongestSource: strongest,
-    confidence: confidenceCount > 0 ? confidenceSum / confidenceCount : null,
+    confidence: strongestConfidence,
+    bySource,
     aiInferred,
+    humanVerified,
+    conflict,
     count: evidence.length,
   }
 }
