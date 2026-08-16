@@ -375,74 +375,87 @@
 
   <div class="verdict">
     <p>
-      <strong>The schema is about one layer ahead of the extractors, and the server is about one layer behind the schema.</strong>
-      <code>types.ts</code> already models nearly everything the spec describes — journeys, branching transitions,
-      outcomes, evidence, provenance, confidence. The extractors mostly do not produce it, and the server can
-      neither store nor query it. Building the UI today would yield a convincing Overview, Code and Impact
-      experience alongside five dead tabs.
+      <strong>The extractors have caught up with the schema, and the server can now answer the
+      questions the interface asks.</strong>
+      Eight of nine lenses have real data, six of seven evidence sources have a producer, and
+      projection, search, coverage, changes, indexing and trails are all reachable over HTTP.
+      The remaining gap is Runtime, which works but needs a telemetry export to read — and
+      cannot be filled from the repository at all.
     </p>
   </div>
 
   <section>
     <h2>Lens readiness</h2>
-    <p>The spec defines nine lenses. Five have no data source at all.</p>
+    <p>The spec defines nine lenses. Eight now have data; Runtime works but needs a telemetry export to read.</p>
     <div class="lensgrid">
       <div class="lens is-partial"><span class="name">Overview</span><span class="state">Partial</span></div>
-      <div class="lens is-absent"><span class="name">Behavior</span><span class="state">Empty</span></div>
-      <div class="lens is-absent"><span class="name">Journey</span><span class="state">Empty</span></div>
+      <div class="lens is-ready"><span class="name">Behavior</span><span class="state">Ready</span></div>
+      <div class="lens is-partial"><span class="name">Journey</span><span class="state">Partial</span></div>
       <div class="lens is-partial"><span class="name">Code</span><span class="state">Partial</span></div>
-      <div class="lens is-absent"><span class="name">Why</span><span class="state">Empty</span></div>
+      <div class="lens is-partial"><span class="name">Why</span><span class="state">Partial</span></div>
       <div class="lens is-partial"><span class="name">Impact</span><span class="state">Partial</span></div>
-      <div class="lens is-absent"><span class="name">Runtime</span><span class="state">Empty</span></div>
-      <div class="lens is-partial"><span class="name">History</span><span class="state">Partial</span></div>
-      <div class="lens is-absent"><span class="name">Tests</span><span class="state">Empty</span></div>
+      <div class="lens is-partial"><span class="name">Runtime</span><span class="state">Needs a source</span></div>
+      <div class="lens is-ready"><span class="name">History</span><span class="state">Ready</span></div>
+      <div class="lens is-ready"><span class="name">Tests</span><span class="state">Ready</span></div>
     </div>
 
     <div class="figures">
-      <div class="figure"><span class="n">5 / 9</span><span class="k">lenses render empty</span></div>
-      <div class="figure"><span class="n">1 / 7</span><span class="k">evidence sources have a producer</span></div>
-      <div class="figure"><span class="n">8</span><span class="k">HTTP endpoints, all graph CRUD</span></div>
-      <div class="figure"><span class="n">0</span><span class="k">trails stored anywhere</span></div>
+      <div class="figure"><span class="n">8 / 9</span><span class="k">lenses have data</span></div>
+      <div class="figure"><span class="n">6 / 7</span><span class="k">evidence sources have a producer</span></div>
+      <div class="figure"><span class="n">17</span><span class="k">HTTP endpoints, 9 of them computed</span></div>
+      <div class="figure"><span class="n">580</span><span class="k">tests, typecheck clean</span></div>
     </div>
   </section>
 
   <section>
-    <h2>Structural blockers</h2>
+    <h2>What the blockers became</h2>
     <div class="blockers">
 
       <div class="blocker">
-        <h3><span class="idx">BLOCKER</span> No queryable entity model</h3>
+        <h3><span class="idx">RESOLVED</span> The server computes now</h3>
         <p>
-          The backend stores one JSONB blob per project across two tables — <code>graphs</code> and
-          <code>annotations</code> — and exposes eight endpoints, all graph-level CRUD. There is no projection,
-          search, trail, coverage, or change endpoint.
-        </p>
-        <p>
-          <code>computeProjection</code>, the model-to-UI boundary the architecture rests on, runs client-side
-          only and has no HTTP surface. Every route in the spec needs addressable entities, per-entity
-          projections, cross-entity search, versioned snapshots, and durable per-user state. None of that is
-          expressible over a document that must be loaded whole.
+          Seventeen endpoints, nine of them computed rather than fetched:
+          <code>/projection</code>, <code>/search</code>, <code>/coverage</code>,
+          <code>/changes</code>, <code>/indexing</code> and the trail routes. Writes snapshot
+          the state they replace, so a change has an identity and a trail can be compared
+          against the model it was recorded against.
         </p>
       </div>
 
       <div class="blocker">
-        <h3><span class="idx">BLOCKER</span> Five lenses have no data source</h3>
+        <h3><span class="idx">RESOLVED</span> Eight of nine lenses have data</h3>
         <p>
-          Behavior has no extractor for conditionals, error handlers or state transitions, and
-          <code>OutcomeKind</code> has zero producers. Journeys only ever come from hand-authored linear paths.
-          Why cannot work at all because <code>.md</code> is rejected at the file-read boundary, so ADRs and docs
-          are never read. Runtime has no telemetry source. Tests are <em>deliberately excluded</em> by
-          <code>SKIP_FILE_PATTERNS</code>.
+          Behavior reads 108 outcome nodes extracted from declared responses. Tests reads 149
+          test files carrying 1,329 named scenarios. Why reads documents and decision records.
+          History reads git. Journey reads 32 derived branching flows.
         </p>
       </div>
 
       <div class="blocker">
-        <h3><span class="idx">BLOCKER</span> Trails do not exist</h3>
+        <h3><span class="idx">RESOLVED</span> Trails exist</h3>
         <p>
-          The spec's central concept requires each step to preserve focus, lens, depth, question, notes and
-          timestamp, and trails to be saved, replayed, shared, forked, annotated and detected as stale. Today
-          <code>ExplorationQuery.trail</code> is an array of node ids used for scoring and never persisted;
-          in-app navigation history is a React ref that dies on reload.
+          Persisted per-row with focus, lens, altitude, question, note and timestamp per step.
+          Forkable, listable, and assessed for freshness against the current model on every
+          read — a stale trail says which steps broke rather than replaying silently.
+        </p>
+      </div>
+
+      <div class="blocker">
+        <h3><span class="idx">REMAINS</span> Runtime needs a source</h3>
+        <p>
+          HAR and OpenTelemetry ingestion both work, and an operation returning a status its
+          specification never declared is reported as a mismatch. But nothing in a repository
+          says what happened when the code ran, so this lens stays empty until someone connects
+          telemetry. It reports that honestly rather than rendering a blank panel.
+        </p>
+      </div>
+
+      <div class="blocker">
+        <h3><span class="idx">REMAINS</span> No identity, roles or ownership</h3>
+        <p>
+          The spec's team surfaces — five roles, domain ownership, shared and recommended
+          trails — need authentication that does not exist. Trail visibility is modelled;
+          nothing enforces it.
         </p>
       </div>
 
@@ -450,33 +463,43 @@
   </section>
 
   <section>
-    <h2>The cheapest win, in detail</h2>
+    <h2>Measured on the real repository</h2>
     <p>
-      The OpenAPI importer considers only success codes. The spec you already parse declares
-      <strong>56 error responses</strong> that map almost directly onto <code>OutcomeKind</code>.
+      Full pipeline against casino-frontend: 731 source files, a 4,243-line OpenAPI spec,
+      580 commits, 19 markdown files.
     </p>
-    <div class="readout">importer reads   <span class="hi">['200','201','202','203','204']</span>   catalog.ts:472
+    <div class="readout">nodes  <span class="hi">914</span>     links  <span class="hi">2,002</span>     journeys  <span class="hi">32</span>
 
-spec declares    21 × 401  →  permission_denied
-                 11 × 422  →  validation_error
-                 11 × 400  →  validation_error
-                  9 × 404  →  not_found
-                  4 × 412  →  conflict</div>
+evidence by source
+  git             740      static_analysis  108
+  test            148      documentation     19
+  runtime           0      human               0
+
+understanding coverage
+  entities  21%   journeys   4%   behavior 100%   evidence 92%
+  tests     18%   why        2%   runtime    0%   freshness 66%     overall 38%
+
+indexing        10 of 12 stages complete
+                domain classification partial - 755 entities unassigned
+                runtime unsupported - no source connected</div>
     <p>
-      The emptiest and most novel lens in the product has real, code-derived outcome data sitting unread in a
-      file the importer already opens. This is the best ratio of value to effort in the register.
+      Low numbers here are findings, not defects. Journey coverage is 4% because derived
+      journeys cover API operations while most nodes are component files. <code>why</code> is
+      2% because this repository documents components rather than decisions — it has no ADRs.
+      Both are facts about the codebase that the tool is now able to state.
     </p>
   </section>
 
   <section>
     <h2>What is genuinely ready</h2>
-    <p>Measured, not assumed — these run against the real repository today.</p>
+    <p>Measured, not assumed — all of this runs against the real repository today.</p>
     <ul class="plain">
-      <li><strong>Projection engine.</strong> Focus, altitude, lens and trail resolve to ranked entities with explanations, budgets, diversity selection and honest notices. Hub-dampening and diversity are mutation-verified.</li>
-      <li><strong>Semantic zoom.</strong> Six altitude tiers with coverage counts and loud degradation when a tier is empty — product 1, domain 10, behavior 50, system 120, implementation 483, code 0.</li>
-      <li><strong>Impact.</strong> Weighted blast radius, upstream and downstream.</li>
-      <li><strong>Extraction.</strong> OpenAPI, file-level codebase, Go backend, transitive API linking and git history — 646 nodes, roughly 1,700 links, 3% isolated.</li>
-      <li><strong>Merge and diff.</strong> Non-destructive, override-aware, deterministic; diff now covers journeys.</li>
+      <li><strong>Projection engine.</strong> Focus, altitude, lens and trail resolve to ranked entities with narrative, grounded questions, budgets, diversity selection and honest notices.</li>
+      <li><strong>Extraction.</strong> OpenAPI with declared outcomes, file-level codebase, Go backend, transitive API linking, tests with scenario names, markdown and decision records, git history, and HAR/OTel runtime.</li>
+      <li><strong>Evidence.</strong> Six of seven sources produce. Disagreement is surfaced per source rather than averaged, and human verification survives re-import.</li>
+      <li><strong>Semantic change.</strong> Snapshots on write; changes report affected journeys, gained and lost failure branches, affected tests and possibly-stale docs.</li>
+      <li><strong>Coverage and indexing.</strong> Eight dimensions per domain, and a twelve-stage pipeline report that distinguishes "found nothing" from "cannot run".</li>
+      <li><strong>Trails.</strong> Persisted, forkable, freshness-assessed, and shareable through URL state that carries the path and not just the destination.</li>
     </ul>
   </section>
 
@@ -490,19 +513,19 @@ spec declares    21 × 401  →  permission_denied
         <tbody>
           <tr><td>Journey actors, entry points, branching, outcomes</td><td><span class="pill ready">Ready</span></td><td>Landed in schema v1.3</td></tr>
           <tr><td>AI-inferred marking, resolution states</td><td><span class="pill ready">Ready</span></td><td><code>EvidenceSummary.aiInferred</code>, <code>Resolution</code></td></tr>
-          <tr><td>Confidence banding (high / medium / low)</td><td><span class="pill partial">Partial</span></td><td>Raw 0–1 mean only; no bands, no entity-level confidence</td></tr>
+          <tr><td>Per-source confidence and conflict</td><td><span class="pill ready">Ready</span></td><td>Strongest source plus a per-source breakdown and an explicit <code>conflict</code>; averaging removed</td></tr>
           <tr><td>Recently changed</td><td><span class="pill partial">Partial</span></td><td><code>metadata.lastModified</code> exists but is not a persisted state</td></tr>
-          <tr><td>Human verified</td><td><span class="pill partial">Partial</span></td><td>Source value exists; no verification record and no write path</td></tr>
+          <tr><td>Human verified</td><td><span class="pill ready">Ready</span></td><td><code>verifyNode</code> records it; survives re-import through the merge engine</td></tr>
           <tr><td>Deprecated, stale, conflicting</td><td><span class="pill absent">Absent</span></td><td>No fields on entities</td></tr>
-          <tr><td>Relationship states</td><td><span class="pill absent">Absent</span></td><td>Runtime-verified, conflicting, stale, hidden — none exist on <code>Link</code></td></tr>
-          <tr><td>Knowledge conflict and resolution</td><td><span class="pill absent">Absent</span></td><td>Worse than missing — <code>summariseEvidence</code> averages confidence, so disagreement is silently blended away rather than surfaced</td></tr>
-          <tr><td>Journey variation by role, flag, subscription</td><td><span class="pill absent">Absent</span></td><td>Only a free-text condition string</td></tr>
-          <tr><td>Journey status</td><td><span class="pill absent">Absent</span></td><td>No field</td></tr>
-          <tr><td>Screen, Route, Test, Commit, PR, Issue, ADR entities</td><td><span class="pill absent">Absent</span></td><td>None are registered node types</td></tr>
-          <tr><td>Understanding coverage, eight dimensions per domain</td><td><span class="pill absent">Absent</span></td><td><code>meta.altitudeCoverage</code> counts nodes per zoom tier — a different measurement, not a substitute</td></tr>
-          <tr><td>Semantic change feed, before-vs-after behavior</td><td><span class="pill absent">Absent</span></td><td>Diff is structural: add, remove, modify counts</td></tr>
-          <tr><td>Temporal model history</td><td><span class="pill absent">Absent</span></td><td><code>PUT /graphs/:id</code> overwrites in place; no snapshots</td></tr>
-          <tr><td>Suggested questions and narrative</td><td><span class="pill absent">Absent</span></td><td>Both were dropped during projection implementation</td></tr>
+          <tr><td>Relationship states</td><td><span class="pill partial">Partial</span></td><td>Evidence-derived state is available per link; no explicit stale or hidden flag</td></tr>
+          <tr><td>Knowledge conflict and resolution</td><td><span class="pill partial">Partial</span></td><td>Confidence disagreement is detected and surfaced; claim-level conflict still needs <code>Evidence</code> to carry an assertion</td></tr>
+          <tr><td>Journey variation by role, flag, subscription</td><td><span class="pill ready">Ready</span></td><td><code>JourneyVariation</code> on journeys and transitions</td></tr>
+          <tr><td>Journey status and origin</td><td><span class="pill ready">Ready</span></td><td>Derived journeys are marked <code>inferred</code>, never <code>verified</code></td></tr>
+          <tr><td>Screen, Route, PR, Issue entities</td><td><span class="pill partial">Partial</span></td><td>Test, document, decision and outcome are now node types; screens, routes, PRs and issues are not</td></tr>
+          <tr><td>Understanding coverage, eight dimensions per domain</td><td><span class="pill ready">Ready</span></td><td>Unmeasurable dimensions report null, never 0 or 100</td></tr>
+          <tr><td>Semantic change feed, before-vs-after behavior</td><td><span class="pill ready">Ready</span></td><td>Reports gained and lost failure branches, affected journeys and tests</td></tr>
+          <tr><td>Temporal model history</td><td><span class="pill ready">Ready</span></td><td>Writes snapshot the state they replace</td></tr>
+          <tr><td>Suggested questions and narrative</td><td><span class="pill ready">Ready</span></td><td>Derived from held facts; every question carries its <code>basis</code></td></tr>
           <tr><td>Auth, identity, roles, domain ownership</td><td><span class="pill absent">Absent</span></td><td>No users table; annotation author is a client-supplied string</td></tr>
         </tbody>
       </table>
@@ -513,27 +536,27 @@ spec declares    21 × 401  →  permission_denied
     <h2>Known traps</h2>
     <ul class="plain">
       <li><strong>Three backend importers are stubs.</strong> <code>nodejs.ts</code>, <code>python.ts</code> and <code>rust.ts</code> return <code>unsupported_language</code> in fourteen lines. The Node plugin declares <code>.js .mjs .cjs .ts</code>, so a JavaScript-dominant tree dispatches to a stub and silently yields nothing.</li>
-      <li><strong><code>Health</code> is declared and consumed nowhere.</strong> Dead field in <code>types.ts</code>.</li>
+      <li><strong>The dev server loads the API lazily through <code>ssrLoadModule</code>.</strong> Do not "simplify" it back to a direct import — Vite inlines the config's graph, where the <code>@/</code> alias does not resolve, and it fails with an opaque error that names no file.</li>
       <li><strong>Name collision on "lens".</strong> <code>src/schema/entity/lens.ts</code> means entity-scoped subgraph filtering, unrelated to the spec's lenses. Worth resolving before UI work begins.</li>
-      <li><strong>Deep links need redefining.</strong> <code>ViewState</code> encodes the retired 3D graph's camera and selection, not focus, lens, altitude and trail.</li>
+      <li><strong><code>Health</code> is declared and consumed nowhere.</strong> Dead field in <code>types.ts</code>.</li>
+      <li><strong>The old 3D UI is still present.</strong> <code>GraphExplorer.tsx</code> and <code>urlState.ts</code> still run; both go when the new UI lands.</li>
       <li><strong>The <code>code</code> altitude is empty</strong> because extraction is file-level. Deliberately deferred after review: the pathology concentrates in a single file, and a regex symbol extractor misses exports in 47% of files.</li>
     </ul>
   </section>
 
   <section>
-    <h2>Sequence before building the UI</h2>
-    <p>Ordered by dependency — each step makes the next one worth doing.</p>
+    <h2>What the UI still needs from us</h2>
+    <p>Ordered by what blocks design decisions soonest.</p>
     <ol class="seq">
-      <li><div class="body"><h3>Read what is already on disk</h3><p>OpenAPI error responses, test files, and markdown. Turns three dead lenses into partially populated ones without any new data source.</p></div></li>
-      <li><div class="body"><h3>Hand-author one branching journey</h3><p>Deposit or bonus claim, wired to real node ids. The only way Behavior and Journey get exercised, and what the prototype was always meant to test.</p></div></li>
-      <li><div class="body"><h3>Add a projection endpoint and trail persistence</h3><p>The minimum server surface any route in the spec requires.</p></div></li>
-      <li><div class="body"><h3>Then build the UI</h3><p>Against a backend that can answer the questions the interface asks of it.</p></div></li>
+      <li><div class="body"><h3>Decide the Runtime story</h3><p>The lens works but needs a HAR or OTel export. Designs need a genuine "no telemetry connected" state, since this cannot be filled from a repository.</p></div></li>
+      <li><div class="body"><h3>Author one real user journey</h3><p>Derived journeys describe single operations. A user goal like "deposit money" spans several operations and screens, and only a person can say where it starts and ends.</p></div></li>
+      <li><div class="body"><h3>Add identity if team surfaces are in scope</h3><p>Roles, domain ownership and shared trails all assume authentication that does not exist yet.</p></div></li>
+      <li><div class="body"><h3>Retire the old UI</h3><p><code>GraphExplorer.tsx</code> and <code>urlState.ts</code> come out when the new interface replaces them.</p></div></li>
     </ol>
   </section>
 
   <footer>
-    Every claim was verified against source rather than inferred from documentation. Figures come from running
-    the full pipeline against casino-frontend: 731 source files, a 4,243-line OpenAPI spec, 580 commits.
+    Every claim was verified against source rather than inferred from documentation. Figures come from running the full pipeline against casino-frontend: 731 source files, a 4,243-line OpenAPI spec, 580 commits, 19 markdown files. 580 tests passing, typecheck clean.
   </footer>
 
 </div>

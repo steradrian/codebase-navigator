@@ -8,121 +8,73 @@ Every claim below was verified against code, not inferred from documentation. Me
 
 ## Verdict
 
-**The schema is roughly one full layer ahead of the extractors, and the server is roughly one full layer behind the schema.**
+**The extractors have caught up with the schema, and the server can now answer the questions the interface asks.**
 
-`types.ts` already models nearly everything the spec describes — `Journey`, `JourneyTransition.condition`, `OutcomeKind`, `Evidence`, provenance, confidence. The extractors mostly do not produce it, and the server cannot store or query it.
-
-Concretely:
-
-- **5 of 9 lenses would render empty** — Behavior, Journey, Why, Runtime, Tests.
-- **6 of 7 evidence sources have no producer.** Only `git` emits anything.
-- **Trails do not exist.** The spec's central concept has no type, table, or endpoint.
-- **The server answers exactly one question:** "give me the whole graph."
-
-Building the UI now would produce a convincing Overview/Code/Impact experience and four or five dead tabs.
+- **8 of 9 lenses have data.** Only Runtime is empty, and it works — it needs a telemetry export to read.
+- **6 of 7 evidence sources have a producer.** Only `ai_inference` has none, by choice.
+- **17 endpoints, 9 of them computed** rather than fetched.
+- **Trails exist**, persisted and freshness-assessed.
 
 ---
 
-## Three structural blockers
+## What the blockers became
 
-### 1. There is no queryable entity model
-
-The backend stores one JSONB blob per project across two tables (`graphs`, `annotations`) and exposes eight endpoints, all graph-level CRUD. There is no projection, search, trail, coverage, or change endpoint.
-
-Every route in the spec needs addressable entities, per-entity projections, cross-entity search, versioned snapshots, and durable per-user state. None of that is expressible over an opaque document that must be loaded whole.
-
-`computeProjection` — the model→UI boundary the whole architecture rests on — runs **client-side only** and has no HTTP surface.
-
-### 2. Five lenses have no data source
-
-| Lens | State | Why |
-|---|---|---|
-| Behavior | empty | Nothing extracts conditionals, error handlers, or state transitions. `OutcomeKind` has zero producers. |
-| Journey | empty | Journeys only ever come from hand-authored linear paths. No branches, actors, roles, or flags are extracted anywhere. |
-| Why | empty | `.md` is rejected at the file-read boundary, so ADRs, docs and READMEs are never read. Only git subject lines exist. |
-| Runtime | empty | No traces, spans, logs, analytics, or error monitoring. |
-| Tests | empty | Test files are **deliberately excluded** by `SKIP_FILE_PATTERNS`. |
-
-### 3. Trails are entirely absent
-
-The spec requires each trail step to preserve focus, lens, depth, question, notes and timestamp, and trails to be saved, replayed, shared, forked, annotated, and detected as stale.
-
-Today `ExplorationQuery.trail` is a `string[]` of node ids, consumed for scoring and never persisted. In-app navigation history is a React ref that dies on reload.
+| Register blocker | Now |
+|---|---|
+| No queryable entity model | **Resolved** — projection, search, coverage, changes, indexing and trail routes; writes snapshot the state they replace |
+| Five lenses with no data source | **Resolved** — Behavior (108 outcomes), Tests (149 files, 1,329 scenarios), Why (documents and decisions), History (git), Journey (32 derived flows) |
+| Trails absent | **Resolved** — persisted per-row with focus/lens/altitude/question/note/timestamp, forkable, freshness-assessed |
+| Runtime | **Remains** — HAR and OTel ingestion work and report spec-vs-reality mismatches, but nothing in a repository says what happened at run time |
+| Identity, roles, ownership | **Remains** — the spec's team surfaces need authentication that does not exist |
 
 ---
 
-## What is genuinely ready
+## Measured on the real repository
 
-These work today and are measured, not assumed:
+Full pipeline against casino-frontend: 731 source files, a 4,243-line OpenAPI spec, 580 commits, 19 markdown files.
 
-- **Projection engine** — focus + altitude + lens + trail → ranked entities with explanations, budgets, diversity selection, and honest notices. Tested to 29 cases; hub-dampening and diversity were mutation-verified.
-- **Semantic zoom** — six altitude tiers, coverage counts, loud degradation when a tier is empty. Real spec run: product 1 · domain 10 · behavior 50 · system 120 · implementation 483 · code 0.
-- **Impact** — weighted blast radius, upstream and downstream.
-- **Extraction** — OpenAPI, codebase (file-level), Go backend, transitive API linking, git history. 646 nodes, ~1,700 links, 3% isolated on the real repo.
-- **Merge** — non-destructive, manual-override-aware, deterministic.
-- **Diff** — structural, now including journeys.
+```
+nodes 914 · links 2,002 · journeys 32
 
----
+evidence by source
+  git 740 · static_analysis 108 · test 148 · documentation 19 · runtime 0 · human 0
 
-## Cheapest high-value wins, in order
+understanding coverage
+  entities 21%  journeys 4%  behavior 100%  evidence 92%
+  tests 18%     why 2%       runtime 0%     freshness 66%    overall 38%
 
-**1. Parse OpenAPI error responses → the Behavior lens.**
-The importer reads only `['200','201','202','203','204']`. The real spec declares **56 error responses** — 21×401, 11×422, 11×400, 9×404, 4×412 — which map almost directly onto `OutcomeKind`: 401→`permission_denied`, 422/400→`validation_error`, 404→`not_found`, 412→`conflict`.
+indexing: 10 of 12 stages complete
+  domain classification partial — 755 entities unassigned
+  runtime unsupported — no source connected
+```
 
-The emptiest and most novel lens has real, code-derived outcome data already sitting in a file we parse. This is the single best ratio of value to effort in the register.
-
-**2. Stop excluding tests → the Tests lens.**
-`SKIP_FILE_PATTERNS` drops `.test.` / `.spec.` files and warns. Reading them and linking test → subject gives the Tests lens real content and lights up the `test` evidence source, which currently has no producer.
-
-**3. Read markdown → the Why lens.**
-`CODE_EXT` rejects `.md` at the file-read boundary. Reading README/ADR/docs populates the `documentation` evidence source and gives Why something beyond commit subjects.
-
-**4. Restore `narrative` and `suggestedQuestions` to `Projection`.**
-Both were in the original data-shape sketch and were dropped during implementation. `QuestionSuggestion` and every lens's explanatory copy depend on them.
-
-**5. Persist trails.**
-New table plus a richer `TrailStep` (focus, lens, altitude, question, note, timestamp). Unlocks `/trails`, `/home`'s "continue exploring", and the onboarding story that motivates the product.
+Low numbers are findings, not defects. Journey coverage is 4% because derived journeys cover API
+operations while most nodes are component files. `why` is 2% because this repository documents
+components rather than decisions — it has no ADRs. Both are facts about the codebase the tool can
+now state.
 
 ---
 
-## Data model gaps
+## What the UI still needs from us
 
-| Requirement | Status | Note |
-|---|---|---|
-| AI-inferred, unknown/partial resolution | ready | `EvidenceSummary.aiInferred`, `Resolution` |
-| Journey actors, entry points, branching, outcomes | ready | v1.3 |
-| Confidence banding (High/Med/Low) | partial | only a raw 0..1 mean; no bands, no entity-level confidence |
-| Recently-changed | partial | `metadata.lastModified` exists; not a persisted state |
-| Human-verified | partial | `'human'` source exists; no verification record, no write path |
-| Deprecated, stale, conflicting | **absent** | no fields |
-| Relationship states (runtime-verified, conflicting, stale, hidden) | **absent** | `Link` has none |
-| Knowledge conflict + resolution | **absent** | worse than missing — `summariseEvidence` *averages* confidence, so disagreement is silently blended away rather than surfaced |
-| Journey variation (role / flag / subscription / device / region) | **absent** | only a free-text `condition` string |
-| Journey status | **absent** | no field |
-| Screen, Route, Test, Commit, PR, Issue, ADR as entities | **absent** | registered types are domain, database, service, feature, api, client, hook, component, page, layout, util, ui, external |
-| Understanding coverage (8 dimensions, per domain) | **absent** | `meta.altitudeCoverage` counts nodes per zoom tier — a different measurement, not a substitute |
-| Semantic change feed / before-vs-after behavior | **absent** | diff is structural (add/remove/modify counts) |
-| Temporal model history ("before PR #1421") | **absent** | `PUT /graphs/:id` overwrites in place; no snapshots |
-| Suggested questions / narrative | **absent** | dropped during projection implementation |
-| Auth, identity, roles, domain ownership | **absent** | no users table; annotation author is a client-supplied string |
+1. **Decide the Runtime story.** Designs need a genuine "no telemetry connected" state.
+2. **Author one real user journey.** Derived journeys describe single operations; a user goal like
+   "deposit money" spans several and only a person can say where it starts and ends.
+3. **Add identity** if team surfaces are in scope.
+4. **Retire the old UI.** `GraphExplorer.tsx` and `urlState.ts` come out when the new one lands.
 
 ---
 
 ## Known traps
 
-- **`nodejs.ts`, `python.ts`, `rust.ts` backend importers are 14-line stubs** returning `unsupported_language`. `nodejsPlugin` declares `['.js','.mjs','.cjs','.ts']`, so a JS/TS-dominant tree routed through `parseBackendCodebase` dispatches to a stub and silently yields nothing.
-- **`Health` is declared in `types.ts` and consumed nowhere.** Dead field.
-- **`src/schema/entity/lens.ts` means something unrelated to the spec's "lenses"** — it is entity-scoped subgraph filtering. Naming collision worth resolving before it confuses the UI work.
-- **`ViewState` (URL sharing) encodes the retired 3D graph's state**, not focus/lens/altitude/trail. Deep links need redefining.
-- **`code` altitude is empty** because extraction is file-level. Debated and deliberately deferred: the pathology is concentrated in one file, and a regex-based symbol extractor misses exports in 47% of files.
+- **Three backend importers are stubs.** `nodejs.ts`, `python.ts`, `rust.ts` return
+  `unsupported_language`. The Node plugin claims `.js .mjs .cjs .ts`, so a JS-dominant tree
+  dispatches to a stub and yields nothing.
+- **The dev server loads the API lazily via `ssrLoadModule`.** Do not revert to a direct import:
+  Vite inlines the config's graph where `@/` does not resolve, failing with an error that names no file.
+- **Name collision on "lens".** `src/schema/entity/lens.ts` is entity-scoped subgraph filtering,
+  unrelated to the spec's lenses.
+- **`Health` is declared and consumed nowhere.**
+- **The `code` altitude is empty** because extraction is file-level — deliberately deferred after review.
 
----
-
-## Recommended sequence before UI
-
-1. **Wins 1–3 above** (error responses, tests, markdown). Turns three dead lenses into partially populated ones using sources already on disk.
-2. **Hand-author one branching journey** against real node ids — deposit or bonus claim. The only way Behavior and Journey get exercised, and what the prototype was always meant to test.
-3. **Projection HTTP endpoint + trail persistence.** The minimum server surface any spec route needs.
-4. **Then build the UI** against a backend that can actually answer its questions.
-
-Steps 1 and 2 are what stop the first design review from hitting five empty tabs.
+*Verified against source, not inferred from documentation. 580 tests passing, typecheck clean.*
