@@ -128,3 +128,34 @@ describe('computeBlastRadius — robustness', () => {
     expect(severities).toEqual(sorted)
   })
 })
+
+describe('computeBlastRadius — link type fallback', () => {
+  // Regression: `(type && DECAY_BY_TYPE[type]) ?? DEFAULT_DECAY` returned
+  // '' for an empty-string type, because ?? does not catch ''. That
+  // multiplied to severity 0, fell under MIN_SEVERITY, and silently
+  // dropped the edge — the node vanished from the blast radius entirely.
+  it('treats an empty-string link type as the default decay, not a dropped edge', () => {
+    const s = emptySchema()
+    s.nodes = [mkNode('a'), mkNode('b')]
+    s.links = [{ ...mkLink('a', 'b', undefined), type: '' }]
+    const r = computeBlastRadius(s, 'a', 'downstream')
+    expect(r.map((i) => i.nodeId)).toContain('b')
+    expect(r.find((i) => i.nodeId === 'b')?.severity).toBeCloseTo(0.6)
+  })
+
+  it('treats an unregistered link type as the default decay', () => {
+    const s = emptySchema()
+    s.nodes = [mkNode('a'), mkNode('b')]
+    s.links = [mkLink('a', 'b', 'brand_new_type')]
+    const r = computeBlastRadius(s, 'a', 'downstream')
+    expect(r.find((i) => i.nodeId === 'b')?.severity).toBeCloseTo(0.6)
+  })
+
+  it('treats an undefined link type as the default decay', () => {
+    const s = emptySchema()
+    s.nodes = [mkNode('a'), mkNode('b')]
+    s.links = [mkLink('a', 'b', undefined)]
+    const r = computeBlastRadius(s, 'a', 'downstream')
+    expect(r.find((i) => i.nodeId === 'b')?.severity).toBeCloseTo(0.6)
+  })
+})

@@ -33,8 +33,17 @@ const DECAY_BY_TYPE: Record<string, number> = {
 const DEFAULT_DECAY = 0.6
 const MIN_SEVERITY = 0.05
 
-const decayFor = (type: string | undefined): number =>
-  (type && DECAY_BY_TYPE[type]) ?? DEFAULT_DECAY
+/**
+ * `??` only catches null/undefined, so the previous form
+ * `(type && DECAY_BY_TYPE[type]) ?? DEFAULT_DECAY` returned the empty
+ * string for `type === ''` — which multiplied to a severity of 0 and
+ * silently dropped the edge from every traversal. Look the type up
+ * explicitly and fall back on any miss.
+ */
+const decayFor = (type: string | undefined): number => {
+  if (!type) return DEFAULT_DECAY
+  return DECAY_BY_TYPE[type] ?? DEFAULT_DECAY
+}
 
 /**
  * Compute blast radius from `startNodeId`. If the start node is not in
