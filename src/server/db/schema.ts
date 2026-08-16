@@ -10,6 +10,10 @@
 //   - `annotations` — reserved for GE-023. Separate row-per-annotation
 //                     storage because annotations are appended
 //                     independently of graph saves.
+//   - `snapshots`   — the graph as it was before each write. Without
+//                     these a change has no identity, /changes/:id
+//                     cannot exist, and a trail cannot be compared
+//                     against the model it was recorded against.
 //   - `trails`      — saved exploration paths. Stored per-row rather than
 //                     inside the graph blob because a trail belongs to a
 //                     person, is written far more often than the graph,
@@ -92,3 +96,19 @@ export const trails = pgTable('trails', {
 
 export type TrailRow = typeof trails.$inferSelect
 export type TrailInsert = typeof trails.$inferInsert
+
+export const snapshots = pgTable('snapshots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  graphId: uuid('graph_id')
+    .notNull()
+    .references(() => graphs.id, { onDelete: 'cascade' }),
+  // The schema as it stood BEFORE the write that created this row, so a
+  // change is always the diff between consecutive snapshots.
+  data: jsonb('data').$type<Schema>().notNull(),
+  /** Optional human label, e.g. "before OpenAPI re-import". */
+  label: text('label'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export type SnapshotRow = typeof snapshots.$inferSelect
+export type SnapshotInsert = typeof snapshots.$inferInsert

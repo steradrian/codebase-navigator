@@ -15,6 +15,13 @@
       "when": 1786898711081,
       "tag": "0001_great_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786904445455,
+      "tag": "0002_puzzling_molly_hayes",
+      "breakpoints": true
     }
   ]
 }

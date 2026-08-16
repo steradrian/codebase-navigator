@@ -19,7 +19,7 @@
 
 import { Hono } from 'hono'
 import { and, desc, eq } from 'drizzle-orm'
-import { graphs, trails } from '../db/schema'
+import { graphs, snapshots, trails } from '../db/schema'
 import type { getDb } from '../db/client'
 import type { Altitude, Schema } from '../../types'
 import { ALTITUDE_ORDER } from '../../schema/altitude'
@@ -27,6 +27,7 @@ import { computeProjection, LENS_PROFILES, type Lens } from '../../schema/projec
 import { computeCoverage } from '../../schema/coverage'
 import { search } from '../../schema/search'
 import { assessTrail, forkTrail, type Trail, type TrailStep } from '../../schema/trail'
+import { summariseChange } from '../../schema/change'
 
 const LENSES = Object.keys(LENS_PROFILES) as Lens[]
 
@@ -135,6 +136,61 @@ export function registerExploreRoutes(app: Hono, db: Db): void {
     const schema = await loadSchema(db, c.req.param('graphId'))
     if (!schema) return c.json({ error: { kind: 'not_found' } }, 404)
     return c.json({ data: computeCoverage(schema, { now: c.req.query('now') }) })
+  })
+
+  // ── changes: feed ──────────────────────────────────────────
+  //
+  // A change is the transition between two consecutive snapshots, so the
+  // most recent change is "last snapshot -> current graph". Snapshots
+  // hold the state BEFORE each write, which is what makes that pairing
+  // work without storing anything twice.
+  app.get('/graphs/:graphId/changes', async (c) => {
+    const graphId = c.req.param('graphId')
+    const [graph] = await db.select().from(graphs).where(eq(graphs.id, graphId)).limit(1)
+    if (!graph) return c.json({ error: { kind: 'not_found' } }, 404)
+
+    const rows = await db
+      .select()
+      .from(snapshots)
+      .where(eq(snapshots.graphId, graphId))
+      .orderBy(desc(snapshots.createdAt))
+
+    // rows[0] is the state immediately before the current graph.
+    const changes = rows.map((row, i) => {
+      const after = i === 0 ? graph.data : rows[i - 1].data
+      const { summary } = summariseChange(row.data, after)
+      return {
+        id: row.id,
+        at: (i === 0 ? graph.updatedAt : rows[i - 1].createdAt).toISOString(),
+        label: row.label ?? undefined,
+        summary,
+      }
+    })
+
+    return c.json({ changes })
+  })
+
+  // ── changes: one, with the full structural diff ────────────
+  app.get('/changes/:id', async (c) => {
+    const id = c.req.param('id')
+    const [row] = await db.select().from(snapshots).where(eq(snapshots.id, id)).limit(1)
+    if (!row) return c.json({ error: { kind: 'not_found' } }, 404)
+
+    const [graph] = await db.select().from(graphs).where(eq(graphs.id, row.graphId)).limit(1)
+    if (!graph) return c.json({ error: { kind: 'not_found' } }, 404)
+
+    // The state this snapshot gave way to: the next snapshot if one was
+    // taken since, otherwise the graph as it stands now.
+    const later = await db
+      .select()
+      .from(snapshots)
+      .where(eq(snapshots.graphId, row.graphId))
+      .orderBy(snapshots.createdAt)
+
+    const index = later.findIndex((s) => s.id === id)
+    const after = index >= 0 && index < later.length - 1 ? later[index + 1].data : graph.data
+
+    return c.json({ data: { id: row.id, ...summariseChange(row.data, after) } })
   })
 
   // ── trails: list ───────────────────────────────────────────

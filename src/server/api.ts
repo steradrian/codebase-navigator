@@ -13,7 +13,7 @@
 import { Hono } from 'hono'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { getDb } from './db/client'
-import { graphs, annotations } from './db/schema'
+import { graphs, annotations, snapshots } from './db/schema'
 import { registerExploreRoutes } from './routes/explore'
 import type { Schema } from '../types'
 import { validate } from '../schema/validate'
@@ -116,6 +116,25 @@ export function createApp() {
       }
     } catch (err) {
       return c.json({ error: { kind: 'invalid_schema', message: (err as Error).message } }, 422)
+    }
+
+    // Snapshot the state being replaced BEFORE overwriting it. Without
+    // this a change has no identity: /changes/:id cannot exist, a
+    // semantic diff has nothing to diff against, and a saved trail
+    // cannot be compared to the model it was recorded against.
+    const [previous] = await db
+      .select({ data: graphs.data })
+      .from(graphs)
+      .where(eq(graphs.id, id))
+      .limit(1)
+    if (previous) {
+      await db.insert(snapshots).values({
+        graphId: id,
+        data: previous.data,
+        label: typeof (body as { label?: unknown })?.label === 'string'
+          ? (body as { label: string }).label
+          : null,
+      })
     }
 
     const patch: { data: Schema; updatedAt: Date; name?: string } = {

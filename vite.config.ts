@@ -15,28 +15,45 @@ function apiMiddleware(): Plugin {
     // open a database connection for a suite of pure-function tests and
     // fail the whole run when no database is present.
     apply: (_config, { command }) => command === 'serve' && !process.env.VITEST,
-    async configureServer(server) {
-      // Dynamic import so schema generation / db-less tools don't crash.
+    configureServer(server) {
+      // The API is loaded through Vite, lazily, on the first /api
+      // request — never imported by this config directly.
       //
-      // Note for anyone extending the server: Vite inlines this module
-      // and its transitive graph into the bundled config, where the `@/`
-      // alias does not resolve. Type-only `@/` imports are fine — they
-      // are erased — but a VALUE import via `@/` anywhere reachable from
-      // src/server will break `pnpm dev` with an opaque
-      // "Cannot find package '@/...'". Use relative imports in that
-      // graph. See src/schema/projection/index.ts.
-      const [{ createApp }, { getRequestListener }] = await Promise.all([
-        import('./src/server/api'),
-        import('@hono/node-server'),
-      ])
-      const app = createApp()
-      const listener = getRequestListener(async (req) => app.fetch(req))
+      // A direct `import('./src/server/api')` gets inlined into the
+      // bundled config, where the `@/` alias does not resolve. Type-only
+      // alias imports survive (TypeScript erases them), so that stayed
+      // invisible until a server route pulled in real logic and then
+      // killed `pnpm dev` — and every Vitest run — with an opaque
+      // "Cannot find package '@/...'".
+      //
+      // ssrLoadModule applies the same alias and TS handling the app
+      // itself gets, so server code may import however it likes. Do not
+      // "simplify" this back to a direct import.
+      //
+      // Deferred to first request rather than done here because module
+      // resolution is not fully wired up during configureServer.
+      let listener: ((req: unknown, res: unknown) => unknown) | null = null
+
+      const init = async () => {
+        const [{ createApp }, { getRequestListener }] = await Promise.all([
+          server.ssrLoadModule('/src/server/api.ts') as Promise<
+            typeof import('./src/server/api')
+          >,
+          import('@hono/node-server'),
+        ])
+        const app = createApp()
+        return getRequestListener(async (req) => app.fetch(req))
+      }
 
       server.middlewares.use('/api', (req, res, next) => {
         // Connect strips the /api mount prefix from req.url, so Hono
         // sees e.g. "/graphs/:id" — matching the routes registered in
         // src/server/api.ts. No prefix restoration needed.
-        Promise.resolve(listener(req, res)).catch(next)
+        const run = async () => {
+          if (!listener) listener = (await init()) as typeof listener
+          await (listener as (req: unknown, res: unknown) => unknown)(req, res)
+        }
+        run().catch(next)
       })
     },
   }

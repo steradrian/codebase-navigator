@@ -9,10 +9,7 @@
 // ─────────────────────────────────────────────────────────────────
 
 import type { Altitude, Node, Schema } from '@/types'
-// Relative rather than '@/schema/altitude': this module is reachable
-// from src/server, whose graph Vite inlines into the bundled dev config
-// where the '@/' alias does not resolve. See vite.config.ts.
-import { nearestPopulatedAltitude, populatedAltitudes } from '../altitude'
+import { nearestPopulatedAltitude, populatedAltitudes } from '@/schema/altitude'
 import {
   behaviouralImportance,
   evidenceScore,
