@@ -1,0 +1,44 @@
+{
+  "name": "graph-explorer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.14",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.14",
+    "js-yaml": "^4.1.1",
+    "pg": "^8.20.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.162.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.6.0",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "0.162.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^6.0.2",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.9"
+  }
+}

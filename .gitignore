@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+*.local
+.env
+# Drizzle generates sql migrations under drizzle/, which are committed.
+# Its metadata ("_journal.json") changes frequently; keep committed anyway
+# so the migration chain is reproducible.
+
