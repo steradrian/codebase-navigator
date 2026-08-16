@@ -20,6 +20,7 @@
 // ─────────────────────────────────────────────────────────────────
 
 import type { Altitude, Evidence, EvidenceSource, Node } from '@/types'
+import type { NarrativeBlock, SuggestedQuestion } from './narrative'
 
 export type Lens =
   | 'overview'
@@ -187,6 +188,12 @@ export type Projection = {
   nodes: ProjectedEntity[]
   relationships: ProjectedRelationship[]
 
+  /** Plain account of the focus, derived only from facts the model holds. */
+  narrative: NarrativeBlock[]
+
+  /** Next questions worth asking, each grounded in a specific fact. */
+  suggestedQuestions: SuggestedQuestion[]
+
   meta: {
     /** Candidates considered before the budget cut — lets the UI say "12 of 340". */
     totalCandidates: number
@@ -202,6 +209,8 @@ export type Projection = {
 }
 
 // ─── lens configuration ──────────────────────────────────────
+
+export type { NarrativeBlock, SuggestedQuestion } from './narrative'
 
 export type ScoreWeights = {
   structural: number

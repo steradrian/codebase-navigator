@@ -19,6 +19,7 @@ import {
   trailPriors,
   type Proximity,
 } from './relevance'
+import { buildNarrative, buildSuggestedQuestions } from './narrative'
 import {
   DEFAULT_BUDGET,
   DEFAULT_DEPTH,
@@ -238,6 +239,10 @@ export function computeProjection(schema: Schema, query: ExplorationQuery): Proj
       lens: query.lens,
       nodes: synthesised.slice(0, budget),
       relationships: [],
+      // Synthesised tiers describe a grouping rather than a specific
+      // entity, so there is nothing factual to narrate about them.
+      narrative: focusNode ? buildNarrative(schema, focusNode) : [],
+      suggestedQuestions: focusNode ? buildSuggestedQuestions(schema, focusNode) : [],
       meta: { totalCandidates: synthesised.length, budget, notices },
     }
   }
@@ -351,6 +356,8 @@ export function computeProjection(schema: Schema, query: ExplorationQuery): Proj
     lens: query.lens,
     nodes,
     relationships,
+    narrative: focusNode ? buildNarrative(schema, focusNode) : [],
+    suggestedQuestions: focusNode ? buildSuggestedQuestions(schema, focusNode) : [],
     meta: { totalCandidates: candidates.length, budget, notices },
   }
 }
